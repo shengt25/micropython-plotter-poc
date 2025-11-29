@@ -1,0 +1,11 @@
+[project]
+name = "micropython-plotter"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = [
+    "mpremote>=1.26.1",
+    "nuitka>=2.8.9",
+    "pyqtgraph>=0.14.0",
+    "pyserial>=3.5",
+    "pyside6>=6.10.1",
+]
