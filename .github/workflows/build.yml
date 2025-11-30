@@ -74,7 +74,6 @@ jobs:
             --assume-yes-for-downloads \
             --enable-plugin=pyside6 \
             --output-filename=${{ matrix.output_name }} \
-            --no-pyi-file-info
 
       # 上传编译产物
       - name: Upload Artifact
