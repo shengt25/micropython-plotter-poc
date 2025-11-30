@@ -20,10 +20,10 @@ class CodeToolBar(QToolBar):
         self.save_action = QAction("Save", self)
         self.plot_action = QAction("Plot", self)
         self.port_combo = QComboBox(self)
-        self.port_combo.setPlaceholderText("选择串口…")
+        self.port_combo.setPlaceholderText("Select port…")
         self.port_combo.setMinimumWidth(200)
         self.port_combo.currentIndexChanged.connect(self._on_port_changed)
-        self.refresh_ports_action = QAction("刷新串口", self)
+        self.refresh_ports_action = QAction("Refresh Ports", self)
         self.refresh_ports_action.triggered.connect(self.port_refresh_requested.emit)
 
         self.run_action.triggered.connect(self.run_clicked.emit)

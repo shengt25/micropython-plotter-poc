@@ -35,8 +35,8 @@ class TabEditorWidget(QWidget):
         editor = CodeEditor()
         editor.textChanged.connect(lambda: self._on_text_changed(editor))
 
-        index = self.tab_widget.addTab(editor, "未命名")
-        self.tab_widget.setTabToolTip(index, "未保存的新文件")
+        index = self.tab_widget.addTab(editor, "Untitled")
+        self.tab_widget.setTabToolTip(index, "Untitled")
 
         self.tab_states[index] = {
             'path': None,  # None 表示未命名/未保存的文件
@@ -178,7 +178,7 @@ class TabEditorWidget(QWidget):
 
         if path is None:
             # 未命名文件
-            title = "未命名"
+            title = "Untitled"
         else:
             # 已命名文件
             filename = path.split('/')[-1]

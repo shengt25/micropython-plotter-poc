@@ -2,6 +2,8 @@ from PySide6.QtCore import QObject, Signal, Slot, QTimer
 from .device_manager import DeviceManager
 from .code_runner import CodeRunner
 from .plot_stream_handler import PlotStreamHandler
+from utils.logger import setup_logger
+from .file_manager import FileManager
 
 
 class DeviceWorker(QObject):
@@ -86,24 +88,24 @@ class DeviceWorker(QObject):
     @Slot()
     def do_connect(self):
         """连接设备"""
-        self.progress.emit("[系统] 正在连接设备...")
-        self.status_changed.emit("正在连接...")
+        self.progress.emit("[System] Connecting to device...")
+        self.status_changed.emit("Connecting...")
 
         success = self.device_manager.connect()
 
         if success:
-            self.progress.emit("[系统] 设备连接成功")
-            self.status_changed.emit("就绪")
+            self.progress.emit("[System] Connected successfully")
+            self.status_changed.emit("Ready")
         else:
-            self.progress.emit("[系统] 设备连接失败")
-            self.status_changed.emit("连接失败")
+            self.progress.emit("[System] Connection failed")
+            self.status_changed.emit("Connection failed")
 
         self.connect_finished.emit(success)
 
     @Slot()
     def do_disconnect(self):
         """断开设备"""
-        self.progress.emit("[系统] 正在断开设备连接...")
+        self.progress.emit("[System] Disconnecting from device...")
         self.device_manager.disconnect()
         self.disconnect_finished.emit()
 
@@ -119,27 +121,27 @@ class DeviceWorker(QObject):
         """
         # 1. 确保连接
         if not self.device_manager.is_connected():
-            self.progress.emit("[系统] 正在连接设备...")
-            self.status_changed.emit("正在连接...")
+            self.progress.emit("[System] Connecting to device...")
+            self.status_changed.emit("Connecting...")
             if not self.device_manager.connect():
-                self.progress.emit("[系统] 设备连接失败")
-                self.status_changed.emit("连接失败")
+                self.progress.emit("[System] Failed to connect to device")
+                self.status_changed.emit("Failed to connect")
                 self.run_finished.emit(False)
                 return
-            self.progress.emit("[系统] 设备连接成功")
+            self.progress.emit("[System] Successfully connected to device")
 
         # 2. 清理设备状态
-        self.progress.emit("[系统] 清理设备状态...")
+        self.progress.emit("[System] Cleaning up status...")
         if not self.code_runner.stop():
-            self.progress.emit("[错误] 设备无响应，请手动重启设备（按 RESET 按钮或拔插 USB）")
-            self.status_changed.emit("设备无响应 - 需要手动重启")
+            self.progress.emit("[Error] Device no response, click stop/reset or hard reset on device")
+            self.status_changed.emit("Device no response")
             self.run_finished.emit(False)
             return
 
         # 3. 执行代码
-        self.progress.emit("\n[运行] 执行代码...")
+        self.progress.emit("\n[Info] Running code...")
         self.progress.emit("-" * 50)
-        self.status_changed.emit("正在执行...")
+        self.status_changed.emit("Running...")
 
         success = self.code_runner.run_code(code)
 
@@ -147,9 +149,9 @@ class DeviceWorker(QObject):
             # 启动后台监控，读取串口输出
             if self.monitor_timer:
                 self.monitor_timer.start(50)  # 每 50ms 轮询一次
-            self.status_changed.emit("代码执行成功")
+            self.status_changed.emit("Code running successfully")
         else:
-            self.status_changed.emit("代码执行失败")
+            self.status_changed.emit("Code running failed")
 
         self.run_finished.emit(success)
 
@@ -170,63 +172,61 @@ class DeviceWorker(QObject):
 
         # 2. 确保连接
         if not self.device_manager.is_connected():
-            self.progress.emit("[系统] 正在连接设备...")
-            self.status_changed.emit("正在连接...")
+            self.progress.emit("[System] Connecting to device...")
+            self.status_changed.emit("Connecting...")
             if not self.device_manager.connect():
-                self.progress.emit("[系统] 设备连接失败")
-                self.status_changed.emit("连接失败")
+                self.progress.emit("[System] Device connection failed")
+                self.status_changed.emit("Connection failed")
                 self.stop_finished.emit(False)
                 return
 
         # 2. 发送停止信号
-        self.progress.emit("[停止] 正在停止代码...")
-        self.status_changed.emit("正在停止...")
+        self.progress.emit("[Stop] Stopping code execution...")
+        self.status_changed.emit("Stopping...")
 
         success = self.code_runner.stop()
 
         # 3. 如果返回 None，表示串口异常，需要重新连接
         if success is None:
-            self.progress.emit("[系统] 检测到设备断开，正在重新连接...")
-            self.status_changed.emit("正在重新连接...")
+            self.progress.emit("[System] Device disconnected, reconnecting...")
+            self.status_changed.emit("Reconnecting...")
 
             # 断开旧连接
             self.device_manager.disconnect()
 
             # 尝试重新连接
             if self.device_manager.connect():
-                self.progress.emit("[系统] 重新连接成功，正在停止代码...")
+                self.progress.emit("[System] Reconnected successfully, stopping code...")
                 success = self.code_runner.stop()
 
                 if success:
-                    self.status_changed.emit("停止成功")
+                    self.status_changed.emit("Stopped successfully")
                     self.stop_finished.emit(True)
                 else:
-                    self.progress.emit("[系统] 停止失败")
-                    self.status_changed.emit("停止失败")
+                    self.progress.emit("[System] Stop failed")
+                    self.status_changed.emit("Stop failed")
                     self.stop_finished.emit(False)
             else:
-                self.progress.emit("[系统] 重新连接失败，请检查设备")
-                self.status_changed.emit("连接失败")
+                self.progress.emit("[System] Reconnection failed, please check device")
+                self.status_changed.emit("Connection failed")
                 self.stop_finished.emit(False)
         elif success:
-            self.status_changed.emit("停止成功")
+            self.status_changed.emit("Stopped successfully")
             self.stop_finished.emit(True)
         else:
-            self.status_changed.emit("停止失败")
+            self.status_changed.emit("Stop failed")
             self.stop_finished.emit(False)
 
     @Slot(str)
     def do_list_dir(self, path: str):
         """列出目录内容（在 Worker 线程执行）"""
-        from .file_manager import FileManager
-        from utils.logger import setup_logger
 
         logger = setup_logger(__name__)
 
         # 1. 检查连接
         if not self.device_manager.is_connected():
             logger.warning("[文件浏览器] 设备未连接")
-            self.progress.emit("[文件浏览器] 设备未连接")
+            self.progress.emit("[File Browser] Device not connected")
             self.list_dir_finished.emit(False, path, [])
             return
 
@@ -275,21 +275,19 @@ class DeviceWorker(QObject):
 
         except Exception as e:
             logger.exception(f"[文件浏览器] 异常: {path}")
-            self.progress.emit(f"[文件浏览器] 列出目录失败: {e}")
+            self.progress.emit(f"[File Browser] Failed to list directory: {e}")
             self.list_dir_finished.emit(False, path, [])
 
     @Slot(str)
     def do_read_file(self, path: str):
         """读取文件内容（在 Worker 线程执行）"""
-        from .file_manager import FileManager
-        from utils.logger import setup_logger
 
         logger = setup_logger(__name__)
 
         # 1. 检查连接
         if not self.device_manager.is_connected():
             logger.warning("[文件读取] 设备未连接")
-            self.progress.emit("[文件] 设备未连接，正在尝试重新连接...")
+            self.progress.emit("[File] Device not connected, trying to reconnect...")
             self.read_file_finished.emit(False, path, "")
             return
 
@@ -321,8 +319,8 @@ class DeviceWorker(QObject):
                         logger.warning(f"[文件读取] 设备无响应或忙碌，响应: {response[:50]}")
 
                         # 友好提示用户
-                        self.progress.emit("[文件] 设备忙碌或无响应")
-                        self.progress.emit("[提示] 如果设备正在执行代码，请点击 Stop 按钮停止")
+                        self.progress.emit("[File] Device busy or not responding")
+                        self.progress.emit("[Tip] If device is running code, please click Stop button")
 
                         self.read_file_finished.emit(False, path, "")
                         return
@@ -331,8 +329,8 @@ class DeviceWorker(QObject):
                     logger.error(f"[文件读取] 读取确认超时: {e}")
 
                     # 友好提示用户
-                    self.progress.emit("[文件] 设备响应超时")
-                    self.progress.emit("[提示] 请点击 Stop 按钮停止当前操作，或检查设备连接")
+                    self.progress.emit("[File] Device response timeout")
+                    self.progress.emit("[Tip] Please click Stop button or check device connection")
 
                     self.read_file_finished.emit(False, path, "")
                     return
@@ -350,32 +348,30 @@ class DeviceWorker(QObject):
                     # content 是 bytes 类型，需要解码为 str
                     content_str = content.decode('utf-8', errors='replace')
                     logger.info(f"[文件读取] 成功: {path}, {len(content_str)} 字符")
-                    self.progress.emit(f"[文件] 成功打开: {path}")
+                    self.progress.emit(f"[File] Successfully opened: {path}")
                     self.read_file_finished.emit(success, path, content_str)
                 else:
                     # content 是错误消息，也是 bytes，需要解码
                     error_msg = content.decode('utf-8', errors='replace')
                     logger.error(f"[文件读取] 解析失败: {path}, 错误: {error_msg}")
-                    self.progress.emit(f"[文件] 打开失败: {path}")
+                    self.progress.emit(f"[File] Failed to open: {path}")
                     self.read_file_finished.emit(success, path, error_msg)
 
         except Exception as e:
             logger.exception(f"[文件读取] 异常: {path}")
-            self.progress.emit(f"[文件] 读取失败: {e}")
+            self.progress.emit(f"[File] Failed to read: {e}")
             self.read_file_finished.emit(False, path, "")
 
     @Slot(str, str)
     def do_write_file(self, path: str, content: str):
         """写入文件内容（在 Worker 线程执行）"""
-        from .file_manager import FileManager
-        from utils.logger import setup_logger
 
         logger = setup_logger(__name__)
 
         # 1. 检查连接
         if not self.device_manager.is_connected():
             logger.warning("[文件写入] 设备未连接")
-            self.progress.emit("[文件] 设备未连接")
+            self.progress.emit("[File] Device not connected")
             self.write_file_finished.emit(False, path)
             return
 
@@ -407,8 +403,8 @@ class DeviceWorker(QObject):
                         logger.warning(f"[文件写入] 设备无响应或忙碌")
 
                         # 友好提示用户
-                        self.progress.emit("[文件] 设备忙碌或无响应")
-                        self.progress.emit("[提示] 如果设备正在执行代码，请点击 Stop 按钮停止")
+                        self.progress.emit("[File] Device busy or not responding")
+                        self.progress.emit("[Tip] If device is running code, please click Stop button")
 
                         self.write_file_finished.emit(False, path)
                         return
@@ -417,8 +413,8 @@ class DeviceWorker(QObject):
                     logger.error(f"[文件写入] 读取确认超时: {e}")
 
                     # 友好提示用户
-                    self.progress.emit("[文件] 设备响应超时")
-                    self.progress.emit("[提示] 请点击 Stop 按钮停止当前操作，或检查设备连接")
+                    self.progress.emit("[File] Device response timeout")
+                    self.progress.emit("[Tip] Please click Stop button or check device connection")
 
                     self.write_file_finished.emit(False, path)
                     return
@@ -434,16 +430,16 @@ class DeviceWorker(QObject):
 
                 if success:
                     logger.info(f"[文件写入] 成功: {path}")
-                    self.progress.emit(f"[文件] 成功保存: {path}")
+                    self.progress.emit(f"[File] Successfully saved: {path}")
                 else:
                     logger.error(f"[文件写入] 失败: {path}")
-                    self.progress.emit(f"[文件] 保存失败: {path}")
+                    self.progress.emit(f"[File] Failed to save: {path}")
 
                 self.write_file_finished.emit(success, path)
 
         except Exception as e:
             logger.exception(f"[文件写入] 异常: {path}")
-            self.progress.emit(f"[文件] 写入失败: {e}")
+            self.progress.emit(f"[File] Failed to write: {e}")
             self.write_file_finished.emit(False, path)
 
     @Slot(str)
@@ -500,6 +496,5 @@ class DeviceWorker(QObject):
                             self.output_received.emit(text)
 
         except Exception as e:
-            from utils.logger import setup_logger
             logger = setup_logger(__name__)
             logger.exception("后台监控串口输出异常")

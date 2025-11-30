@@ -29,7 +29,7 @@ class CodeEditor(QPlainTextEdit):
         font.setWeight(QFont.Weight.Medium)  # 设置为中等粗细，更易读
         self.setFont(font)
 
-        self.setPlaceholderText("MicroPython")
+        self.setPlaceholderText("")
 
         self.setTabStopDistance(4 * self.fontMetrics().horizontalAdvance(' '))
 

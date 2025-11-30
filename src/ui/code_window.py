@@ -15,7 +15,7 @@ class CodeWindow(QMainWindow):
         super().__init__()
 
         self.setWindowTitle("MicroPython Code Runner")
-        self.resize(900, 700)
+        self.resize(1000, 700)
 
         # 绘图窗口（按需创建）
         self.plotter_window = None
@@ -76,7 +76,7 @@ class CodeWindow(QMainWindow):
         # 创建状态栏
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
-        self.status_bar.showMessage("初始化中...")
+        self.status_bar.showMessage("Initializing...")
 
     def _setup_worker(self):
         """设置后台线程和 Worker"""
@@ -147,7 +147,7 @@ class CodeWindow(QMainWindow):
         self.toolbar.port_refresh_requested.connect(lambda: self.refresh_ports())
         self.toolbar.port_selected.connect(self.on_port_selected)
 
-        self.worker.port_changed.connect(lambda port: self.status_bar.showMessage(f"串口已切换到 {port}"))
+        self.worker.port_changed.connect(lambda port: self.status_bar.showMessage(f"Serial port switched to {port}"))
 
         # 绘图按钮 -> 打开绘图窗口
         self.toolbar.plot_clicked.connect(self.on_plot_clicked)
@@ -162,7 +162,7 @@ class CodeWindow(QMainWindow):
         """连接设备"""
         self.worker_ready = True
         if not self.current_port:
-            self.status_bar.showMessage("请选择设备串口")
+            self.status_bar.showMessage("Please select a port")
             return
         if self._connect_when_ready:
             self.worker.connect_requested.emit()
@@ -175,13 +175,13 @@ class CodeWindow(QMainWindow):
         if not ports:
             self.current_port = None
             self.toolbar.set_ports([], None)
-            self.status_bar.showMessage("未检测到 Raspberry Pi Pico 设备")
+            self.status_bar.showMessage("No Raspberry Pi Pico detected")
             self._connect_when_ready = False
             return
 
         if not self.current_port or self.current_port not in devices:
             self.current_port = devices[0]
-            self.status_bar.showMessage(f"已选择 {self.current_port}")
+            self.status_bar.showMessage(f"Selected {self.current_port}")
 
         self.toolbar.set_ports(ports, self.current_port)
 
@@ -189,7 +189,7 @@ class CodeWindow(QMainWindow):
 
         if auto_connect:
             if self.worker_ready:
-                self.status_bar.showMessage(f"正在连接 {self.current_port}...")
+                self.status_bar.showMessage(f"Connecting {self.current_port}...")
                 self.worker.connect_requested.emit()
             else:
                 self._connect_when_ready = True
@@ -200,11 +200,11 @@ class CodeWindow(QMainWindow):
         self.current_port = port
         self.worker.set_port_requested.emit(port)
         if self.worker_ready:
-            self.status_bar.showMessage(f"切换串口到 {port}，正在连接...")
+            self.status_bar.showMessage(f"Serial port switched to {port}，connecting...")
             self.worker.connect_requested.emit()
         else:
             self._connect_when_ready = True
-            self.status_bar.showMessage(f"已选择 {port}，等待 Worker 初始化后连接")
+            self.status_bar.showMessage(f"Selected {port}，getting ready...")
 
     def on_run_code(self):
         """运行代码按钮处理"""
@@ -212,15 +212,15 @@ class CodeWindow(QMainWindow):
         path, content, modified = self.tab_editor.get_current_file_info()
         if path and modified:
             # 自动保存（等待异步完成信号后才标记为已保存）
-            self.output_console.append_info("[系统] 自动保存文件...")
+            self.output_console.append_info("[System] Auto saving file...")
             self.worker.write_file_requested.emit(path, content)
 
         # 2. 获取代码
         code = self.tab_editor.get_current_code().strip()
 
         if not code:
-            self.output_console.append_error("[错误] 代码为空")
-            self.status_bar.showMessage("代码为空")
+            self.output_console.append_error("[Error] Code is empty")
+            self.status_bar.showMessage("Code is empty")
             return
 
         # 禁用按钮，防止重复点击
@@ -242,7 +242,7 @@ class CodeWindow(QMainWindow):
         if success:
             self.file_browser.initialize_root()
         else:
-            self.file_browser.show_error("设备连接失败")
+            self.file_browser.show_error("Connecting to device failed")
 
     def on_run_finished(self, success):
         """运行完成处理"""
@@ -259,13 +259,13 @@ class CodeWindow(QMainWindow):
 
         msg_box = QMessageBox(self)
         msg_box.setIcon(QMessageBox.Icon.Warning)
-        msg_box.setWindowTitle("设备无响应")
-        msg_box.setText("无法停止设备或软重启失败")
+        msg_box.setWindowTitle("Device no response")
+        msg_box.setText("Cannot stop device or soft reset device.")
         msg_box.setInformativeText(
-            "请尝试以下操作：\n"
-            "1. 按下设备上的 RESET 按钮\n"
-            "2. 或者拔插 USB 线重新连接\n"
-            "3. 然后重启应用程序"
+            "Please try:\n"
+            "1. Press the reset button on the device\n"
+            "2. or re-plug the USB cable\n"
+            "3. Then click stop/reset button again\n"
         )
         msg_box.setStandardButtons(QMessageBox.StandardButton.Ok)
         msg_box.exec()
@@ -276,12 +276,12 @@ class CodeWindow(QMainWindow):
             self.file_browser.populate_directory(path, items)
             return
 
-        self.file_browser.show_error(f"[文件浏览器] 无法列出目录: {path}")
-        self.output_console.append_error(f"[文件浏览器] 无法列出目录: {path}")
+        self.file_browser.show_error(f"[File browser] Cannot list directory: {path}")
+        self.output_console.append_error(f"[File browser] Cannot list directory: {path}")
 
     def on_file_open_requested(self, path: str):
         """文件打开请求处理（双击文件）"""
-        self.output_console.append_info(f"[文件] 正在打开: {path}")
+        self.output_console.append_info(f"[File] Opening: {path}")
         # 触发 Worker 读取文件
         self.worker.read_file_requested.emit(path)
 
@@ -301,28 +301,28 @@ class CodeWindow(QMainWindow):
             if is_already_open:
                 # 已打开，更新内容（不触发修改标记）
                 self.tab_editor.update_file_content(path, content)
-                self.output_console.append_info(f"[文件] 已更新内容: {path}")
+                self.output_console.append_info(f"[File] Updated: {path}")
             else:
                 # 未打开，在新标签中打开
                 self.tab_editor.open_file(path, content)
-                self.output_console.append_info(f"[文件] 成功打开: {path}")
+                self.output_console.append_info(f"[File] Opened: {path}")
         else:
-            self.output_console.append_error(f"[文件] 打开失败: {path}")
+            self.output_console.append_error(f"[File] Open failed: {path}")
 
     def on_save_file(self):
         """保存文件按钮处理"""
         path, content, modified = self.tab_editor.get_current_file_info()
 
         if not path:
-            self.output_console.append_error("[文件] 当前标签没有关联文件")
+            self.output_console.append_error("[File] No corresponding file for this tab, creating file is not supported yet")
             return
 
         if not modified:
-            self.output_console.append_info("[文件] 文件未修改，无需保存")
+            self.output_console.append_info("[File] No modification made")
             return
 
         # 触发 Worker 写入文件（等待异步完成信号后才标记为已保存）
-        self.output_console.append_info(f"[文件] 正在保存: {path}")
+        self.output_console.append_info(f"[File] Saving: {path}")
         self.worker.write_file_requested.emit(path, content)
 
     def on_write_file_finished(self, success: bool, path: str):
@@ -330,14 +330,14 @@ class CodeWindow(QMainWindow):
         if success:
             # 保存成功，标记为已保存
             self.tab_editor.mark_file_saved(path)
-            self.output_console.append_info(f"[文件] 保存成功: {path}")
+            self.output_console.append_info(f"[File] Save successfully: {path}")
 
             # 重新读取文件，确保内容一致
-            self.output_console.append_info(f"[文件] 重新读取文件以确认内容...")
+            self.output_console.append_info(f"[File] Reloading after saving...")
             self.worker.read_file_requested.emit(path)
         else:
             # 保存失败，保持修改状态
-            self.output_console.append_error(f"[文件] 保存失败: {path}")
+            self.output_console.append_error(f"[File] Save failed: {path}")
 
     def on_file_modified(self, modified: bool):
         """文件修改状态改变处理"""
@@ -348,9 +348,9 @@ class CodeWindow(QMainWindow):
         """活动文件改变处理"""
         # 更新状态栏
         if path:
-            self.status_bar.showMessage(f"当前文件: {path}")
+            self.status_bar.showMessage(f"Current file: {path}")
         else:
-            self.status_bar.showMessage("就绪")
+            self.status_bar.showMessage("Ready")
 
         # 更新保存按钮状态
         _, _, modified = self.tab_editor.get_current_file_info()
@@ -399,7 +399,7 @@ class CodeWindow(QMainWindow):
             self.plotter_window.close()
 
         # 2. 断开设备（在 Worker 线程中执行）
-        self.output_console.append_info("[系统] 正在断开设备连接...")
+        self.output_console.append_info("[System] Disconnecting device...")
         self.worker.disconnect_requested.emit()
 
         # 3. 停止并等待线程结束

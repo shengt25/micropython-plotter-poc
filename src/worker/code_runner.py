@@ -2,7 +2,8 @@ import time
 from typing import Optional
 from PySide6.QtCore import QObject, Signal
 from .device_manager import DeviceManager
-
+from utils.logger import setup_logger
+from serial import SerialException
 
 class CodeRunner(QObject):
     """
@@ -39,14 +40,14 @@ class CodeRunner(QObject):
 
             if b'OK' not in response:
                 error_msg = response.decode('utf-8', errors='replace')
-                self.error_received.emit(f"执行失败: {error_msg}")
+                self.error_received.emit(f"Execution failed: {error_msg}")
                 return False
 
-            self.output_received.emit(f"[CodeRunner] 正在运行: {filepath}")
+            self.output_received.emit(f"[CodeRunner] Running: {filepath}")
             return True
 
         except Exception as e:
-            self.error_received.emit(f"运行异常: {e}")
+            self.error_received.emit(f"Exception when running: {e}")
             return False
 
     def run_code(self, code: str) -> bool:
@@ -59,7 +60,6 @@ class CodeRunner(QObject):
         Returns:
             是否成功执行
         """
-        from utils.logger import setup_logger
 
         logger = setup_logger(__name__)
 
@@ -73,7 +73,7 @@ class CodeRunner(QObject):
             # 读取确认
             response = self.dm.read_until(b'OK', timeout=2)
             if b'OK' not in response:
-                self.error_received.emit("设备未响应 (OK)")
+                self.error_received.emit("Device no response")
                 return False
 
             logger.debug("[代码运行] 收到 OK 确认")
@@ -81,7 +81,7 @@ class CodeRunner(QObject):
 
         except Exception as e:
             logger.exception(f"[代码运行] 执行异常")
-            self.error_received.emit(f"执行异常: {e}")
+            self.error_received.emit(f"Exception when running: {e}")
             return False
 
     def stop(self) -> Optional[bool]:
@@ -92,8 +92,6 @@ class CodeRunner(QObject):
             True 如果停止成功，False 如果失败
             None 如果遇到串口异常（需要重新连接）
         """
-        import serial
-        from utils.logger import setup_logger
 
         logger = setup_logger(__name__)
 
@@ -135,15 +133,15 @@ class CodeRunner(QObject):
                 self.dm.read_until(b'>', timeout=1)
 
                 logger.info("[停止代码] 软重启成功，REPL 就绪")
-                self.output_received.emit("[系统] 程序已停止")
+                self.output_received.emit("[System] Program stopped")
                 return True
 
-        except serial.SerialException as e:
+        except SerialException as e:
             logger.error(f"[停止代码] 串口异常: {e}")
             # 返回 None 表示需要重新连接
             return None
 
         except Exception as e:
             logger.exception("[停止代码] 异常")
-            self.error_received.emit(f"[系统] 停止异常: {e}")
+            self.error_received.emit(f"[System] Exception when stopping: {e}")
             return False

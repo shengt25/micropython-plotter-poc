@@ -17,7 +17,7 @@ class OutputConsole(QTextEdit):
         self.setFont(font)
 
         # 设置占位符
-        self.setPlaceholderText("输出将显示在这里...")
+        self.setPlaceholderText("Console output...")
 
     def append_output(self, message: str):
         """追加普通输出（黑色）"""

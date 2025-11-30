@@ -20,20 +20,20 @@ class FileBrowser(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
 
         # 标题
-        title = QLabel("设备文件")
+        title = QLabel("Files")
         title.setStyleSheet("font-weight: bold; padding: 5px;")
         layout.addWidget(title)
 
         # 树形控件
         self.tree = QTreeWidget()
-        self.tree.setHeaderLabel("文件浏览器")
+        self.tree.setHeaderLabel("File Browser")
         self.tree.itemExpanded.connect(self._on_item_expanded)
         self.tree.itemDoubleClicked.connect(self._on_item_double_clicked)
         self.tree.setExpandsOnDoubleClick(False)
         layout.addWidget(self.tree)
 
         # 占位文本
-        self.placeholder = QLabel("设备未连接")
+        self.placeholder = QLabel("Device not connected")
         self.placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.placeholder.setStyleSheet("color: #888; padding: 20px;")
         layout.addWidget(self.placeholder)
@@ -93,7 +93,7 @@ class FileBrowser(QWidget):
             self._path_to_item[full_path] = child
 
             if is_dir:
-                placeholder = QTreeWidgetItem(child, ["加载中..."])
+                placeholder = QTreeWidgetItem(child, ["Loading..."])
                 placeholder.setDisabled(True)
 
     def _find_item_by_path(self, path: str):

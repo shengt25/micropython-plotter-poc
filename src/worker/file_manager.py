@@ -65,20 +65,20 @@ except Exception as e:
         code = f"""import sys, binascii
 try:
     sys.stdout.write('<<<FILE_START>>>')
-    # 1. 使用 'rb' 读取二进制，防止换行符转换和编码错误
+    # 1. Read using 'rb' to use binary
     with open('{escaped_path}', 'rb') as f:
         while True:
-            # 2. 分块读取，每次 256 字节，防止内存溢出
+            # 2. Read by chunk, 256 bytes at a time
             chunk = f.read(256)
             if not chunk: 
                 break
-            # 3. 转换为 Hex 发送，防止特殊字符干扰串口，且避免分隔符冲突
-            # hexlify 返回的是 bytes，需要 decode 为 str 写入 stdout
+            # 3. Convert to Hex to prevent special characters
+            # hexlify returns bytes，need to decode to str and write to stdout
             sys.stdout.write(binascii.hexlify(chunk).decode())
 
     sys.stdout.write('<<<FILE_END>>>')
 except Exception as e:
-    # 错误处理
+    # When error
     sys.stdout.write('<<<ERROR>>>')
     sys.stdout.write(str(e))
 """
@@ -137,9 +137,9 @@ except Exception as e:
 
         code = f"""import sys, binascii
 try:
-    # 从 Hex 还原二进制数据
+    # Restore from Hex
     content_bytes = binascii.unhexlify('{hex_content}')
-    # 写入文件（二进制模式）
+    # Write in binary mode
     with open('{escaped_path}', 'wb') as f:
         f.write(content_bytes)
     sys.stdout.write('<<<SUCCESS>>>')

@@ -3,6 +3,7 @@ import threading
 import time
 from typing import Optional
 from PySide6.QtCore import QObject
+from utils.logger import setup_logger
 
 
 class DeviceManager(QObject):
