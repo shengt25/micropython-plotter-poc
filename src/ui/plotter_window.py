@@ -164,6 +164,14 @@ class PlotterWindow(QWidget):
         )
         self.stats_label.setText(stats)
 
+    def showEvent(self, event):
+        """Handle window show event - restart timer when window reopens"""
+        super().showEvent(event)
+
+        # Restart timer if it was stopped
+        if self.ui_timer and not self.ui_timer.isActive():
+            self.ui_timer.start(50)
+
     def closeEvent(self, event):
         """Handle window close event"""
         # Stop timer
