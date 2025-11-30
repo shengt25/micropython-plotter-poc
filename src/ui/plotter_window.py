@@ -216,7 +216,6 @@ class PlotterWindow(QWidget):
             self.curves.append(curve)
 
         # Statistics label (below plot)
-        graphics_widget.nextRow()
         self.stats_label = pg.LabelItem(justify="left")
         graphics_widget.addItem(self.stats_label)
 
@@ -261,14 +260,6 @@ class PlotterWindow(QWidget):
         self.refresh_rate_combo.currentIndexChanged.connect(self._on_refresh_rate_changed)
         layout.addWidget(self.refresh_rate_combo)
 
-        layout.addSpacing(10)
-
-        # Pause/Resume button
-        self.pause_button = QPushButton("Pause")
-        self.pause_button.setCheckable(True)
-        self.pause_button.clicked.connect(self._on_pause_toggled)
-        layout.addWidget(self.pause_button)
-
         layout.addSpacing(20)
 
         # Display percentage selection
@@ -278,6 +269,14 @@ class PlotterWindow(QWidget):
         self.display_percentage_combo.setCurrentIndex(2)  # Default 50%
         self.display_percentage_combo.currentIndexChanged.connect(self._on_display_percentage_changed)
         layout.addWidget(self.display_percentage_combo)
+
+        layout.addSpacing(20)
+
+        # Pause/Resume button
+        self.pause_button = QPushButton("Pause")
+        self.pause_button.setCheckable(True)
+        self.pause_button.clicked.connect(self._on_pause_toggled)
+        layout.addWidget(self.pause_button)
 
         # Add stretch to push everything to the top
         layout.addStretch()
