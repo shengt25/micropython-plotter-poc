@@ -196,14 +196,14 @@ class DeviceWorker(QObject):
                 logger.debug(f"[文件浏览器] 已发送列出目录命令")
 
                 # 4. 读取确认
-                response = self.device_manager.serial.read_until(b'OK')
+                response = self.device_manager.read_until(b'OK', timeout=2)
                 if b'OK' not in response:
                     logger.warning(f"[文件浏览器] 未收到确认: {path}")
                     self.list_dir_finished.emit(False, path, [])
                     return
 
                 # 5. 读取输出
-                output_bytes = self.device_manager.serial.read_until(b'\x04\x04')
+                output_bytes = self.device_manager.read_until(b'\x04\x04', timeout=5)
                 output = output_bytes.decode('utf-8', errors='replace')
 
                 logger.debug(f"[文件浏览器] 接收到输出: {len(output)} 字符")
@@ -260,7 +260,7 @@ class DeviceWorker(QObject):
 
                 # 4. 读取确认（设置较短超时检测设备忙碌）
                 try:
-                    response = self.device_manager.serial.read_until(b'OK', timeout=2)
+                    response = self.device_manager.read_until(b'OK', timeout=2)
 
                     if b'OK' not in response:
                         logger.warning(f"[文件读取] 设备无响应或忙碌，响应: {response[:50]}")
@@ -283,7 +283,7 @@ class DeviceWorker(QObject):
                     return
 
                 # 5. 读取输出
-                output_bytes = self.device_manager.serial.read_until(b'\x04\x04', timeout=5)
+                output_bytes = self.device_manager.read_until(b'\x04\x04', timeout=5)
                 output = output_bytes.decode('utf-8', errors='replace')
 
                 logger.debug(f"[文件读取] 接收到 {len(output)} 字符")
@@ -342,7 +342,7 @@ class DeviceWorker(QObject):
 
                 # 4. 读取确认（设置较短超时检测设备忙碌）
                 try:
-                    response = self.device_manager.serial.read_until(b'OK', timeout=2)
+                    response = self.device_manager.read_until(b'OK', timeout=2)
 
                     if b'OK' not in response:
                         logger.warning(f"[文件写入] 设备无响应或忙碌")
@@ -365,7 +365,7 @@ class DeviceWorker(QObject):
                     return
 
                 # 5. 读取输出
-                output_bytes = self.device_manager.serial.read_until(b'\x04\x04', timeout=5)
+                output_bytes = self.device_manager.read_until(b'\x04\x04', timeout=5)
                 output = output_bytes.decode('utf-8', errors='replace')
 
                 logger.debug(f"[文件写入] 接收到响应: {len(output)} 字符")

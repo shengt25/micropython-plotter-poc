@@ -35,8 +35,7 @@ class CodeRunner(QObject):
             self.dm.serial.write(code.encode('utf-8'))
             self.dm.serial.write(b'\x04')  # Ctrl+D 执行
 
-            # 读取执行确认（Raw REPL 会返回 'OK'）
-            response = self.dm.serial.read_until(b'OK')
+            response = self.dm.read_until(b'OK', timeout=2)
 
             if b'OK' not in response:
                 error_msg = response.decode('utf-8', errors='replace')
@@ -72,19 +71,16 @@ class CodeRunner(QObject):
             logger.debug("[代码运行] 已发送代码和 Ctrl+D")
 
             # 读取确认
-            response = self.dm.serial.read_until(b'OK')
-
+            response = self.dm.read_until(b'OK', timeout=2)
             if b'OK' not in response:
-                error_msg = response.decode('utf-8', errors='replace')
-                logger.error(f"[代码运行] 确认失败: {error_msg[:100]}")
-                self.error_received.emit(f"执行失败: {error_msg}")
+                self.error_received.emit("设备未响应 (OK)")
                 return False
 
             logger.debug("[代码运行] 收到 OK 确认")
 
             # 读取代码的完整输出，清空缓冲区
             try:
-                output = self.dm.serial.read_until(b'\x04\x04')
+                output = self.dm.read_until(b'\x04\x04', timeout=5)
                 output_str = output.decode('utf-8', errors='replace')
 
                 logger.debug(f"[代码运行] 接收到 {len(output)} 字节输出")
@@ -134,46 +130,18 @@ class CodeRunner(QObject):
                     pass
 
                 # 3. 重新进入 Raw REPL
-                success = self.dm._enter_raw_mode()
-
-                if success:
-                    logger.info("[停止代码] 软重启成功，REPL 就绪")
-                    self.output_received.emit("[系统] 程序已停止")
-                    return True
-                else:
-                    logger.warning("[停止代码] 软重启失败")
-                    self.error_received.emit("[系统] 停止失败")
+                response = self.dm.read_until(b'raw REPL; CTRL-B to exit\r\n', timeout=2)
+                if b'raw REPL' not in response:
+                    logger.warning("[停止代码] 未进入 Raw REPL")
                     return False
 
+                self.dm.read_until(b'>', timeout=1)
+
+                logger.info("[停止代码] 软重启成功，REPL 就绪")
+                self.output_received.emit("[系统] 程序已停止")
+                return True
+
         except Exception as e:
-            logger.exception(f"[停止代码] 异常")
+            logger.exception("[停止代码] 异常")
             self.error_received.emit(f"[系统] 停止异常: {e}")
-            return False
-
-    # def soft_reset(self) -> bool:
-    #     """
-    #     软重启设备（Ctrl+D）- 暂时禁用
-    #     会停止程序并重新加载 boot.py 和 main.py
-    #
-    #     Returns:
-    #         是否成功重启
-    #     """
-    #     # DeviceManager 中的 soft_reset() 已被移除
-    #     pass
-
-    def interrupt(self) -> bool:
-        """
-        发送 Ctrl+C 中断信号（但不改变状态）
-        用于需要中断但不想完全停止的场景
-
-        Returns:
-            是否成功发送
-        """
-        try:
-            self.dm.serial.write(b'\x03')
-            self.output_received.emit("[CodeRunner] 已发送中断信号")
-            return True
-
-        except Exception as e:
-            self.error_received.emit(f"发送中断失败: {e}")
             return False

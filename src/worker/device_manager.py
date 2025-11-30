@@ -17,6 +17,7 @@ class DeviceManager(QObject):
         self.baudrate = baudrate
         self.serial: Optional[serial.Serial] = None
         self.lock = threading.Lock()
+        self._default_read_timeout = 1.0
 
     def connect(self) -> bool:
         """连接设备并进入 Raw REPL 模式"""
@@ -145,3 +146,23 @@ class DeviceManager(QObject):
     def __exit__(self, exc_type, exc_val, exc_tb):
         """支持 with 语句"""
         self.disconnect()
+
+    def read_until(self, expected: bytes, timeout: Optional[float] = None) -> bytes:
+        """读取直到遇到特定结束符或超时"""
+        if not self.serial:
+            return b""
+
+        deadline = time.time() + (timeout or self._default_read_timeout)
+        buffer = bytearray()
+        terminator = expected
+
+        while time.time() < deadline:
+            chunk = self.serial.read(1)
+            if chunk:
+                buffer += chunk
+                if buffer.endswith(terminator):
+                    break
+            else:
+                time.sleep(0.01)
+
+        return bytes(buffer)

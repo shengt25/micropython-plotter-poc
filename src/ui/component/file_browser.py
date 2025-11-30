@@ -29,6 +29,7 @@ class FileBrowser(QWidget):
         self.tree.setHeaderLabel("文件浏览器")
         self.tree.itemExpanded.connect(self._on_item_expanded)
         self.tree.itemDoubleClicked.connect(self._on_item_double_clicked)
+        self.tree.setExpandsOnDoubleClick(False)
         layout.addWidget(self.tree)
 
         # 占位文本
@@ -40,6 +41,7 @@ class FileBrowser(QWidget):
         # 默认显示占位符
         self.tree.hide()
         self.placeholder.show()
+        self._root_path = "/"
 
     def initialize_root(self):
         """初始化根目录（设备连接后调用）"""
@@ -47,17 +49,8 @@ class FileBrowser(QWidget):
         self.placeholder.hide()
         self.tree.show()
 
-        # 创建根节点
-        root_item = QTreeWidgetItem(self.tree, ["/"])
-        root_item.setData(0, Qt.ItemDataRole.UserRole, "/")  # 存储路径
-        root_item.setData(0, Qt.ItemDataRole.UserRole + 1, True)  # 是否为目录
-
-        # 添加占位子节点（使其可展开）
-        placeholder = QTreeWidgetItem(root_item, ["加载中..."])
-        placeholder.setDisabled(True)
-
-        # 请求加载根目录
-        self.dir_expand_requested.emit("/")
+        # 直接请求根目录内容，不再创建可见的“/”节点
+        self.dir_expand_requested.emit(self._root_path)
 
     def show_error(self, message: str):
         """显示错误"""
@@ -73,28 +66,38 @@ class FileBrowser(QWidget):
             path: 目录路径
             items: [(name, is_dir), ...]
         """
-        # 查找对应的节点
+        if path == self._root_path:
+            self._populate_children(self.tree.invisibleRootItem(), items, path)
+            return
+
         item = self._find_item_by_path(path)
         if not item:
             return
 
-        # 删除占位子节点
         item.takeChildren()
+        self._populate_children(item, items, path)
 
-        # 添加实际内容
+    def _populate_children(self, parent: QTreeWidgetItem, items: list, path: str):
+        """为指定父节点填充子节点"""
+        # 清理顶层节点内容（仅当父节点为不可见根时生效）
+        if parent == self.tree.invisibleRootItem():
+            while self.tree.topLevelItemCount() > 0:
+                self.tree.takeTopLevelItem(0)
+
         for name, is_dir in items:
             full_path = f"{path}/{name}" if path != "/" else f"/{name}"
-            child = QTreeWidgetItem(item, [name])
+            child = QTreeWidgetItem(parent, [name])
             child.setData(0, Qt.ItemDataRole.UserRole, full_path)
             child.setData(0, Qt.ItemDataRole.UserRole + 1, is_dir)
 
-            # 如果是目录，添加占位子节点
             if is_dir:
                 placeholder = QTreeWidgetItem(child, ["加载中..."])
                 placeholder.setDisabled(True)
 
     def _find_item_by_path(self, path: str):
         """根据路径查找节点"""
+        if path == self._root_path:
+            return self.tree.invisibleRootItem()
         iterator = QTreeWidgetItemIterator(self.tree)
         while iterator.value():
             item = iterator.value()
@@ -121,11 +124,7 @@ class FileBrowser(QWidget):
         is_dir = item.data(0, Qt.ItemDataRole.UserRole + 1)
 
         if is_dir:
-            # 双击目录：展开/折叠
-            if item.isExpanded():
-                item.setExpanded(False)
-            else:
-                item.setExpanded(True)
-        else:
-            # 双击文件：发出打开请求
-            self.file_open_requested.emit(path)
+            item.setExpanded(not item.isExpanded())
+            return
+
+        self.file_open_requested.emit(path)
