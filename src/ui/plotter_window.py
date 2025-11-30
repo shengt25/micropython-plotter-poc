@@ -130,8 +130,8 @@ class PlotterWindow(QWidget):
         ]
 
         # Data buffers (5 channels)
-        self.buffers = [deque(maxlen=2000) for _ in range(5)]
-        self.time_buffer = deque(maxlen=2000)
+        self.buffers = [deque(maxlen=5000) for _ in range(5)]
+        self.time_buffer = deque(maxlen=5000)
         self.start_time = time.time()
 
         # Statistics
@@ -141,6 +141,10 @@ class PlotterWindow(QWidget):
         self.is_paused = False
         self.refresh_rates = [10, 20, 30, 60]  # Hz
         self.current_refresh_rate = 30  # Default 30 Hz
+
+        # Display percentage control
+        self.display_percentages = [0.10, 0.25, 0.50, 0.75, 1.0]  # 10%, 25%, 50%, 75%, 100%
+        self.current_display_percentage = 0.50  # Default 50%
 
         # UI components (will be created in _setup_ui)
         self.channel_name_inputs = []
@@ -194,6 +198,12 @@ class PlotterWindow(QWidget):
         self.plot.showGrid(x=True, y=True, alpha=0.3)
         self.plot.setClipToView(True)
         self.plot.setDownsampling(auto=True, mode="peak")
+
+        # Configure ViewBox
+        view_box = self.plot.getViewBox()
+        view_box.setAutoVisible(x=True, y=True)  # Visible data only
+        view_box.enableAutoRange(axis='y', enable=True)  # Auto-range Y
+        view_box.setMouseEnabled(x=False, y=True)  # Disable mouse drag on X
 
         # Create 5 curves
         self.curves = []
@@ -259,6 +269,16 @@ class PlotterWindow(QWidget):
         self.pause_button.clicked.connect(self._on_pause_toggled)
         layout.addWidget(self.pause_button)
 
+        layout.addSpacing(20)
+
+        # Display percentage selection
+        layout.addWidget(QLabel("Display Range:"))
+        self.display_percentage_combo = QComboBox()
+        self.display_percentage_combo.addItems(["10%", "25%", "50%", "75%", "100%"])
+        self.display_percentage_combo.setCurrentIndex(2)  # Default 50%
+        self.display_percentage_combo.currentIndexChanged.connect(self._on_display_percentage_changed)
+        layout.addWidget(self.display_percentage_combo)
+
         # Add stretch to push everything to the top
         layout.addStretch()
 
@@ -307,6 +327,11 @@ class PlotterWindow(QWidget):
         else:
             # Resumed
             self.pause_button.setText("Pause")
+
+    @Slot(int)
+    def _on_display_percentage_changed(self, index):
+        """Handle display percentage change"""
+        self.current_display_percentage = self.display_percentages[index]
 
     @Slot()
     def _open_color_settings(self):
@@ -361,25 +386,54 @@ class PlotterWindow(QWidget):
         self.packet_count += 1
 
     def update_ui(self):
-        """Update curves and statistics (called by timer at 20 Hz)"""
+        """Update curves and statistics (called by timer)"""
         if len(self.time_buffer) == 0:
             return
 
-        # Convert time buffer to list once
+        # Convert time buffer to list
         time_array = list(self.time_buffer)
+        total_points = len(time_array)
 
-        # Update each curve
+        # Calculate how many points to display based on percentage
+        if self.current_display_percentage < 1.0:
+            # Show only the most recent N% points
+            points_to_show = max(1, int(total_points * self.current_display_percentage))
+            start_idx = total_points - points_to_show
+            visible_time = time_array[start_idx:]
+        else:
+            # Show 100% (all points)
+            start_idx = 0
+            visible_time = time_array
+
+        # Update each curve with visible data
         for i, curve in enumerate(self.curves):
-            # Filter out None values
-            data = [x for x in self.buffers[i] if x is not None]
+            # Get data for this channel
+            data = list(self.buffers[i])
 
-            if data:
-                # Match time array length to data length
-                time_data = time_array[-len(data):]
-                curve.setData(time_data, data)
+            # Extract visible portion
+            if start_idx > 0:
+                visible_data = data[start_idx:]
             else:
-                # Clear curve if no data
+                visible_data = data
+
+            # Filter out None values
+            filtered_data = [x for x in visible_data if x is not None]
+            filtered_time = visible_time[-len(filtered_data):] if filtered_data else []
+
+            if filtered_data:
+                curve.setData(filtered_time, filtered_data)
+            else:
                 curve.setData([], [])
+
+        # Set X-axis range to show visible data
+        if len(visible_time) > 0:
+            view_box = self.plot.getViewBox()
+            view_box.enableAutoRange(axis='x', enable=False)
+            x_min = visible_time[0]
+            x_max = visible_time[-1]
+            # Add small padding to prevent edge clipping
+            padding = (x_max - x_min) * 0.02 if x_max > x_min else 0.1
+            view_box.setXRange(x_min - padding, x_max + padding, padding=0)
 
         # Update statistics
         self._update_stats()
