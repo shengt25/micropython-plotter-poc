@@ -67,11 +67,9 @@ import sys
 try:
     with open('{escaped_path}', 'r') as f:
         content = f.read()
-    sys.stdout.write('<<<FILE_START>>>' + '\\n')
+    sys.stdout.write('<<<FILE_START>>>')
     sys.stdout.write(content)
-    if not content.endswith('\\n'):
-        sys.stdout.write('\\n')
-    sys.stdout.write('<<<FILE_END>>>' + '\\n')
+    sys.stdout.write('<<<FILE_END>>>')
 except Exception as e:
     sys.stdout.write('ERROR:' + str(e) + '\\n')
 """
@@ -98,14 +96,9 @@ except Exception as e:
         if start_idx == -1 or end_idx == -1:
             return (False, "")
 
-        # 提取内容（去除标记）
+        # 直接提取标记之间的内容，不做任何修改
         content = raw_output[start_idx + len(start_marker):end_idx]
 
-        # 去除首尾的换行符（标记后的换行）
-        if content.startswith('\n'):
-            content = content[1:]
-        if content.endswith('\n'):
-            content = content[:-1]
 
         return (True, content)
 
