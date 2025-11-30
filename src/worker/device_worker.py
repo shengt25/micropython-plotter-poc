@@ -140,6 +140,7 @@ class DeviceWorker(QObject):
         步骤：
         1. 检查连接
         2. 发送停止信号
+        3. 如果串口异常，自动重新连接
         """
         # 1. 确保连接
         if not self.device_manager.is_connected():
@@ -157,12 +158,36 @@ class DeviceWorker(QObject):
 
         success = self.code_runner.stop()
 
-        if success:
+        # 3. 如果返回 None，表示串口异常，需要重新连接
+        if success is None:
+            self.progress.emit("[系统] 检测到设备断开，正在重新连接...")
+            self.status_changed.emit("正在重新连接...")
+
+            # 断开旧连接
+            self.device_manager.disconnect()
+
+            # 尝试重新连接
+            if self.device_manager.connect():
+                self.progress.emit("[系统] 重新连接成功，正在停止代码...")
+                success = self.code_runner.stop()
+
+                if success:
+                    self.status_changed.emit("停止成功")
+                    self.stop_finished.emit(True)
+                else:
+                    self.progress.emit("[系统] 停止失败")
+                    self.status_changed.emit("停止失败")
+                    self.stop_finished.emit(False)
+            else:
+                self.progress.emit("[系统] 重新连接失败，请检查设备")
+                self.status_changed.emit("连接失败")
+                self.stop_finished.emit(False)
+        elif success:
             self.status_changed.emit("停止成功")
+            self.stop_finished.emit(True)
         else:
             self.status_changed.emit("停止失败")
-
-        self.stop_finished.emit(success)
+            self.stop_finished.emit(False)
 
     @Slot(str)
     def do_list_dir(self, path: str):

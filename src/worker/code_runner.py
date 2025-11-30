@@ -1,5 +1,5 @@
 import time
-from typing import Optional, Callable
+from typing import Optional
 from PySide6.QtCore import QObject, Signal
 from .device_manager import DeviceManager
 
@@ -84,13 +84,15 @@ class CodeRunner(QObject):
             self.error_received.emit(f"执行异常: {e}")
             return False
 
-    def stop(self) -> bool:
+    def stop(self) -> Optional[bool]:
         """
         停止代码执行并软重启 REPL
 
         Returns:
             True 如果停止成功，False 如果失败
+            None 如果遇到串口异常（需要重新连接）
         """
+        import serial
         from utils.logger import setup_logger
 
         logger = setup_logger(__name__)
@@ -130,6 +132,11 @@ class CodeRunner(QObject):
                 logger.info("[停止代码] 软重启成功，REPL 就绪")
                 self.output_received.emit("[系统] 程序已停止")
                 return True
+
+        except serial.SerialException as e:
+            logger.error(f"[停止代码] 串口异常: {e}")
+            # 返回 None 表示需要重新连接
+            return None
 
         except Exception as e:
             logger.exception("[停止代码] 异常")
