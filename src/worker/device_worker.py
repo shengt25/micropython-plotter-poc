@@ -14,6 +14,7 @@ class DeviceWorker(QObject):
     run_code_requested = Signal(str)    # 请求运行代码
     stop_requested = Signal()           # 请求停止代码
     disconnect_requested = Signal()     # 请求断开连接
+    list_dir_requested = Signal(str)    # 请求列出目录
 
     # Signals - 操作完成信号
     initialized = Signal()              # Worker 初始化完成
@@ -21,6 +22,7 @@ class DeviceWorker(QObject):
     disconnect_finished = Signal()      # 断开完成
     run_finished = Signal(bool)         # 运行完成 (成功/失败)
     stop_finished = Signal(bool)        # 停止完成 (成功/失败)
+    list_dir_finished = Signal(bool, str, list)  # 列出目录完成 (success, path, items)
 
     # Signals - 进度信息
     progress = Signal(str)              # 进度消息（显示在输出控制台）
@@ -153,3 +155,41 @@ class DeviceWorker(QObject):
             self.status_changed.emit("停止失败")
 
         self.stop_finished.emit(success)
+
+    @Slot(str)
+    def do_list_dir(self, path: str):
+        """列出目录内容（在 Worker 线程执行）"""
+        from .file_manager import FileManager
+
+        # 1. 检查连接
+        if not self.device_manager.is_connected():
+            self.progress.emit("[文件浏览器] 设备未连接")
+            self.list_dir_finished.emit(False, path, [])
+            return
+
+        # 2. 生成 MicroPython 代码
+        code = FileManager.generate_list_dir_code(path)
+
+        try:
+            with self.device_manager.lock:
+                # 3. 发送代码
+                self.device_manager.serial.write(code.encode('utf-8'))
+                self.device_manager.serial.write(b'\x04')  # Ctrl+D 执行
+
+                # 4. 读取确认
+                response = self.device_manager.serial.read_until(b'OK')
+                if b'OK' not in response:
+                    self.list_dir_finished.emit(False, path, [])
+                    return
+
+                # 5. 读取输出
+                output_bytes = self.device_manager.serial.read_until(b'\x04\x04')
+                output = output_bytes.decode('utf-8', errors='replace')
+
+                # 6. 解析结果
+                success, items = FileManager.parse_list_dir_result(output)
+                self.list_dir_finished.emit(success, path, items)
+
+        except Exception as e:
+            self.progress.emit(f"[文件浏览器] 列出目录失败: {e}")
+            self.list_dir_finished.emit(False, path, [])

@@ -3,6 +3,7 @@ from PySide6.QtCore import Qt, QThread
 from .component.toolbar import CodeToolBar
 from .component.code_editor import CodeEditor
 from .component.output_console import OutputConsole
+from .component.file_browser import FileBrowser
 from worker.device_worker import DeviceWorker
 
 
@@ -33,25 +34,33 @@ class CodeWindow(QMainWindow):
         self.toolbar = CodeToolBar(self)
         self.addToolBar(self.toolbar)
 
+        # 创建文件浏览器
+        self.file_browser = FileBrowser()
+
         # 创建代码编辑器
         self.code_editor = CodeEditor()
 
         # 创建输出控制台
         self.output_console = OutputConsole()
 
-        # 使用 QSplitter 分割上下两部分（可调整大小）
-        splitter = QSplitter(Qt.Orientation.Vertical)
-        splitter.addWidget(self.code_editor)
-        splitter.addWidget(self.output_console)
+        # 右侧垂直分割器：代码编辑器 + 输出控制台
+        right_splitter = QSplitter(Qt.Orientation.Vertical)
+        right_splitter.addWidget(self.code_editor)
+        right_splitter.addWidget(self.output_console)
+        right_splitter.setStretchFactor(0, 6)
+        right_splitter.setStretchFactor(1, 4)
 
-        # 设置初始比例：代码编辑器占 60%，输出控制台占 40%
-        splitter.setStretchFactor(0, 6)
-        splitter.setStretchFactor(1, 4)
+        # 主水平分割器：文件浏览器 + 右侧
+        main_splitter = QSplitter(Qt.Orientation.Horizontal)
+        main_splitter.addWidget(self.file_browser)
+        main_splitter.addWidget(right_splitter)
+        main_splitter.setStretchFactor(0, 4)  # 文件浏览器 40%
+        main_splitter.setStretchFactor(1, 6)  # 右侧 60%
 
         # 创建中央部件
         central_widget = QWidget()
         layout = QVBoxLayout(central_widget)
-        layout.addWidget(splitter)
+        layout.addWidget(main_splitter)
         layout.setContentsMargins(0, 0, 0, 0)
 
         self.setCentralWidget(central_widget)
@@ -81,6 +90,7 @@ class CodeWindow(QMainWindow):
         self.worker.run_code_requested.connect(self.worker.do_run_code)
         self.worker.stop_requested.connect(self.worker.do_stop)
         self.worker.disconnect_requested.connect(self.worker.do_disconnect)
+        self.worker.list_dir_requested.connect(self.worker.do_list_dir)
 
         # 启动线程
         self.worker_thread.start()
@@ -106,6 +116,12 @@ class CodeWindow(QMainWindow):
         self.worker.connect_finished.connect(self.on_connect_finished)
         self.worker.run_finished.connect(self.on_run_finished)
         self.worker.stop_finished.connect(self.on_stop_finished)
+
+        # 文件浏览器 -> Worker
+        self.file_browser.dir_expand_requested.connect(self.worker.list_dir_requested.emit)
+
+        # Worker -> 文件浏览器
+        self.worker.list_dir_finished.connect(self.on_list_dir_finished)
 
     def _connect_device(self):
         """连接设备"""
@@ -137,8 +153,11 @@ class CodeWindow(QMainWindow):
 
     def on_connect_finished(self, success):
         """连接完成处理"""
-        # 连接完成后，不需要特殊处理（状态栏已经通过 status_changed 更新）
-        pass
+        # 连接成功后初始化文件浏览器
+        if success:
+            self.file_browser.initialize_root()
+        else:
+            self.file_browser.show_error("设备连接失败")
 
     def on_run_finished(self, success):
         """运行完成处理"""
@@ -149,6 +168,13 @@ class CodeWindow(QMainWindow):
         """停止完成处理"""
         # 恢复按钮状态
         self.set_buttons_enabled(True)
+
+    def on_list_dir_finished(self, success: bool, path: str, items: list):
+        """目录列出完成处理"""
+        if success:
+            self.file_browser.populate_directory(path, items)
+        else:
+            self.output_console.append_error(f"[文件浏览器] 无法列出目录: {path}")
 
     def set_buttons_enabled(self, enabled: bool):
         """设置按钮启用/禁用状态"""
