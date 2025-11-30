@@ -114,7 +114,12 @@ class CodeRunner(QObject):
                 except:
                     pass
 
-                # 3. 重新进入 Raw REPL（显式发送 Ctrl+A）
+                # 3. 发送 Ctrl+D 执行 soft reset（关键修复）
+                self.dm.serial.write(b'\x04')
+                logger.debug("[停止代码] 发送 Ctrl+D (soft reset)")
+                time.sleep(0.5)  # 等待设备重启
+
+                # 4. 重新进入 Raw REPL（显式发送 Ctrl+A）
                 self.dm.serial.write(b'\x01')
                 response = self.dm.read_until(b'raw REPL; CTRL-B to exit\r\n', timeout=2)
                 if b'raw REPL' not in response:
