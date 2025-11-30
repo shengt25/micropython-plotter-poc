@@ -12,7 +12,8 @@ class FileManager(QObject):
         escaped_path = path.replace("'", "\\'")
 
         code = f"""
-import os
+import os, sys
+_emit = lambda msg: sys.stdout.write(msg + '\\n')
 try:
     items = []
     for name in sorted(os.listdir('{escaped_path}')):
@@ -24,9 +25,9 @@ try:
         except:
             items.append((name, 'UNKNOWN'))
     for item in items:
-        print(item[0] + '|' + item[1])
+        _emit(item[0] + '|' + item[1])
 except Exception as e:
-    print('ERROR:' + str(e))
+    _emit('ERROR:' + str(e))
 """
         return code.strip()
 
@@ -62,14 +63,17 @@ except Exception as e:
         escaped_path = path.replace("'", "\\'")
 
         code = f"""
+import sys
 try:
     with open('{escaped_path}', 'r') as f:
         content = f.read()
-    print('<<<FILE_START>>>')
-    print(content, end='')
-    print('<<<FILE_END>>>')
+    sys.stdout.write('<<<FILE_START>>>' + '\\n')
+    sys.stdout.write(content)
+    if not content.endswith('\\n'):
+        sys.stdout.write('\\n')
+    sys.stdout.write('<<<FILE_END>>>' + '\\n')
 except Exception as e:
-    print('ERROR:' + str(e))
+    sys.stdout.write('ERROR:' + str(e) + '\\n')
 """
         return code.strip()
 
@@ -113,12 +117,13 @@ except Exception as e:
         escaped_content = content.replace("\\", "\\\\").replace("'", "\\'")
 
         code = f"""
+import sys
 try:
     with open('{escaped_path}', 'w') as f:
         f.write('''{escaped_content}''')
-    print('SUCCESS')
+    sys.stdout.write('SUCCESS' + '\\n')
 except Exception as e:
-    print('ERROR:' + str(e))
+    sys.stdout.write('ERROR:' + str(e) + '\\n')
 """
         return code.strip()
 

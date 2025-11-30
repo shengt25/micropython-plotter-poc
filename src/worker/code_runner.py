@@ -77,23 +77,6 @@ class CodeRunner(QObject):
                 return False
 
             logger.debug("[代码运行] 收到 OK 确认")
-
-            # 读取代码的完整输出，清空缓冲区
-            try:
-                output = self.dm.read_until(b'\x04\x04', timeout=5)
-                output_str = output.decode('utf-8', errors='replace')
-
-                logger.debug(f"[代码运行] 接收到 {len(output)} 字节输出")
-
-                if output_str.strip():
-                    self.output_received.emit(output_str)
-
-            except Exception as e:
-                # 超时不影响返回值，但至少尝试清空了缓冲区
-                logger.warning(f"[代码运行] 读取输出超时: {e}")
-                self.error_received.emit(f"读取输出超时: {e}")
-
-            logger.info("[代码运行] 代码执行完成")
             return True
 
         except Exception as e:
@@ -129,11 +112,18 @@ class CodeRunner(QObject):
                 except:
                     pass
 
-                # 3. 重新进入 Raw REPL
+                # 3. 重新进入 Raw REPL（显式发送 Ctrl+A）
+                self.dm.serial.write(b'\x01')
                 response = self.dm.read_until(b'raw REPL; CTRL-B to exit\r\n', timeout=2)
                 if b'raw REPL' not in response:
-                    logger.warning("[停止代码] 未进入 Raw REPL")
-                    return False
+                    logger.warning(f"[停止代码] 未进入 Raw REPL: {response}")
+                    # 再尝试一次：先退出 Raw 再进入，避免残留状态
+                    self.dm.serial.write(b'\x02')
+                    time.sleep(0.1)
+                    self.dm.serial.write(b'\x01')
+                    response = self.dm.read_until(b'raw REPL; CTRL-B to exit\r\n', timeout=2)
+                    if b'raw REPL' not in response:
+                        return False
 
                 self.dm.read_until(b'>', timeout=1)
 

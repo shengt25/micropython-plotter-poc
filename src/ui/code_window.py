@@ -5,6 +5,7 @@ from .component.tab_editor import TabEditorWidget
 from .component.output_console import OutputConsole
 from .component.file_browser import FileBrowser
 from worker.device_worker import DeviceWorker
+from utils.serial_scanner import find_pico_ports, format_label
 
 
 class CodeWindow(QMainWindow):
@@ -33,6 +34,10 @@ class CodeWindow(QMainWindow):
         # 创建工具栏
         self.toolbar = CodeToolBar(self)
         self.addToolBar(self.toolbar)
+
+        self.current_port = None
+        self.worker_ready = False
+        self._connect_when_ready = False
 
         # 创建文件浏览器
         self.file_browser = FileBrowser()
@@ -93,6 +98,7 @@ class CodeWindow(QMainWindow):
         self.worker.list_dir_requested.connect(self.worker.do_list_dir)
         self.worker.read_file_requested.connect(self.worker.do_read_file)
         self.worker.write_file_requested.connect(self.worker.do_write_file)
+        self.worker.set_port_requested.connect(self.worker.set_port)
 
         # 启动线程
         self.worker_thread.start()
@@ -135,10 +141,59 @@ class CodeWindow(QMainWindow):
         self.tab_editor.file_modified.connect(self.on_file_modified)
         self.tab_editor.active_file_changed.connect(self.on_active_file_changed)
 
+        self.toolbar.port_refresh_requested.connect(lambda: self.refresh_ports())
+        self.toolbar.port_selected.connect(self.on_port_selected)
+
+        self.worker.port_changed.connect(lambda port: self.status_bar.showMessage(f"串口已切换到 {port}"))
+
+        # 初始化时扫描一次串口但暂不立即连接（等待 Worker 就绪）
+        self.refresh_ports(auto_connect=True)
+
     def _connect_device(self):
         """连接设备"""
-        # 触发 Worker 连接设备（异步执行）
-        self.worker.connect_requested.emit()
+        self.worker_ready = True
+        if not self.current_port:
+            self.status_bar.showMessage("请选择设备串口")
+            return
+        if self._connect_when_ready:
+            self.worker.connect_requested.emit()
+            self._connect_when_ready = False
+
+    def refresh_ports(self, auto_connect: bool = True):
+        ports = [(info.device, format_label(info)) for info in find_pico_ports()]
+        self.toolbar.set_ports(ports, self.current_port)
+        devices = [device for device, _ in ports]
+
+        if not ports:
+            self.current_port = None
+            self.status_bar.showMessage("未检测到 Raspberry Pi Pico 设备")
+            self._connect_when_ready = False
+            return
+
+        if not self.current_port or self.current_port not in devices:
+            self.current_port = devices[0]
+            self.status_bar.showMessage(f"已选择 {self.current_port}")
+
+        self.worker.set_port_requested.emit(self.current_port)
+
+        if auto_connect:
+            if self.worker_ready:
+                self.status_bar.showMessage(f"正在连接 {self.current_port}...")
+                self.worker.connect_requested.emit()
+            else:
+                self._connect_when_ready = True
+
+    def on_port_selected(self, port: str):
+        if port == self.current_port:
+            return
+        self.current_port = port
+        self.worker.set_port_requested.emit(port)
+        if self.worker_ready:
+            self.status_bar.showMessage(f"切换串口到 {port}，正在连接...")
+            self.worker.connect_requested.emit()
+        else:
+            self._connect_when_ready = True
+            self.status_bar.showMessage(f"已选择 {port}，等待 Worker 初始化后连接")
 
     def on_run_code(self):
         """运行代码按钮处理"""

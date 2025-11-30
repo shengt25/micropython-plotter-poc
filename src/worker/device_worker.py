@@ -17,6 +17,7 @@ class DeviceWorker(QObject):
     list_dir_requested = Signal(str)    # 请求列出目录
     read_file_requested = Signal(str)   # 请求读取文件
     write_file_requested = Signal(str, str)  # 请求写入文件 (path, content)
+    set_port_requested = Signal(str)        # 请求切换串口
 
     # Signals - 操作完成信号
     initialized = Signal()              # Worker 初始化完成
@@ -35,6 +36,9 @@ class DeviceWorker(QObject):
     # Signals - 输出信息（从 CodeRunner 转发）
     output_received = Signal(str)
     error_received = Signal(str)
+
+    # Signals - 端口变化
+    port_changed = Signal(str)
 
     def __init__(self, port: str, baudrate: int = 115200):
         super().__init__()
@@ -206,7 +210,7 @@ class DeviceWorker(QObject):
                 output_bytes = self.device_manager.read_until(b'\x04\x04', timeout=5)
                 output = output_bytes.decode('utf-8', errors='replace')
 
-                logger.debug(f"[文件浏览器] 接收到输出: {len(output)} 字符")
+                logger.debug(f"[文件浏览器] 接收到输出: {output}")
 
                 # 6. 解析结果
                 success, items = FileManager.parse_list_dir_result(output)
@@ -386,3 +390,14 @@ class DeviceWorker(QObject):
             logger.exception(f"[文件写入] 异常: {path}")
             self.progress.emit(f"[文件] 写入失败: {e}")
             self.write_file_finished.emit(False, path)
+
+    @Slot(str)
+    def set_port(self, port: str):
+        """设置串口并重新连接（如果需要）"""
+        if not self.device_manager:
+            return
+        if self.device_manager.port == port:
+            return
+        self.device_manager.port = port
+        self.device_manager.disconnect()
+        self.port_changed.emit(port)
