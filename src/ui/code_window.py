@@ -1,10 +1,9 @@
 from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QSplitter, QStatusBar
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QThread
 from .component.toolbar import CodeToolBar
 from .component.code_editor import CodeEditor
 from .component.output_console import OutputConsole
-from worker.device_manager import DeviceManager
-from worker.code_runner import CodeRunner
+from worker.device_worker import DeviceWorker
 
 
 class CodeWindow(QMainWindow):
@@ -16,18 +15,17 @@ class CodeWindow(QMainWindow):
         self.setWindowTitle("MicroPython Code Runner")
         self.resize(900, 700)
 
-        # 创建后台 Worker
-        self.device_manager = DeviceManager('/dev/cu.usbmodem11201')
-        self.code_runner = CodeRunner(self.device_manager)
-
         # 创建 UI 组件
         self._setup_ui()
+
+        # 创建后台线程和 Worker
+        self._setup_worker()
 
         # 连接信号
         self._connect_signals()
 
-        # 连接设备
-        self._connect_device()
+        # Worker 初始化完成后自动连接设备
+        # （不在 __init__ 直接调用，避免 Worker 未初始化）
 
     def _setup_ui(self):
         """设置 UI 布局"""
@@ -61,30 +59,51 @@ class CodeWindow(QMainWindow):
         # 创建状态栏
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
-        self.status_bar.showMessage("就绪")
+        self.status_bar.showMessage("初始化中...")
+
+    def _setup_worker(self):
+        """设置后台线程和 Worker"""
+        # 创建线程
+        self.worker_thread = QThread()
+
+        # 创建 Worker（会在线程中运行）
+        self.worker = DeviceWorker('/dev/cu.usbmodem11201')
+
+        # 将 Worker 移动到线程
+        self.worker.moveToThread(self.worker_thread)
+
+        # 在线程启动后初始化 Worker（重要：必须在线程中创建串口对象）
+        self.worker_thread.started.connect(self.worker.initialize)
+
+        # 启动线程
+        self.worker_thread.start()
 
     def _connect_signals(self):
         """连接信号和槽"""
-        # 工具栏按钮 -> 处理函数
+        # 工具栏按钮 -> Worker 操作
         self.toolbar.run_clicked.connect(self.on_run_code)
         self.toolbar.stop_clicked.connect(self.on_stop_code)
-        # self.toolbar.reset_clicked.connect(self.on_reset_device)  # 暂时禁用软重启功能
 
-        # CodeRunner 输出 -> 输出控制台
-        self.code_runner.output_received.connect(self.output_console.append_output)
-        self.code_runner.error_received.connect(self.output_console.append_error)
+        # Worker 初始化完成 -> 自动连接设备
+        self.worker.initialized.connect(self._connect_device)
+
+        # Worker 进度信息 -> UI
+        self.worker.progress.connect(self.output_console.append_info)
+        self.worker.status_changed.connect(self.status_bar.showMessage)
+
+        # Worker 输出信息 -> 输出控制台
+        self.worker.output_received.connect(self.output_console.append_output)
+        self.worker.error_received.connect(self.output_console.append_error)
+
+        # Worker 操作完成 -> UI 更新
+        self.worker.connect_finished.connect(self.on_connect_finished)
+        self.worker.run_finished.connect(self.on_run_finished)
+        self.worker.stop_finished.connect(self.on_stop_finished)
 
     def _connect_device(self):
         """连接设备"""
-        self.output_console.append_info("[系统] 正在连接设备...")
-        self.status_bar.showMessage("正在连接...")
-
-        if self.device_manager.connect():
-            self.output_console.append_info("[系统] 设备连接成功")
-            self.status_bar.showMessage("就绪")
-        else:
-            self.output_console.append_error("[系统] 设备连接失败")
-            self.status_bar.showMessage("连接失败")
+        # 触发 Worker 连接设备（异步执行）
+        self.worker.do_connect()
 
     def on_run_code(self):
         """运行代码按钮处理"""
@@ -95,60 +114,49 @@ class CodeWindow(QMainWindow):
             self.status_bar.showMessage("代码为空")
             return
 
-        # 1. 确保连接（如果未连接则尝试连接）
-        if not self.device_manager.is_connected():
-            self.output_console.append_info("[系统] 正在连接设备...")
-            self.status_bar.showMessage("正在连接...")
-            if not self.device_manager.connect():
-                self.output_console.append_error("[错误] 设备连接失败")
-                self.status_bar.showMessage("连接失败")
-                return
-            self.output_console.append_info("[系统] 设备连接成功")
+        # 禁用按钮，防止重复点击
+        self.set_buttons_enabled(False)
 
-        # 2. 无条件清理状态（发送 Ctrl+C + 进入 Raw REPL）
-        self.output_console.append_info("[系统] 清理设备状态...")
-        if not self.code_runner.stop():
-            self.output_console.append_error("[错误] 设备无响应，请手动重启设备（按 RESET 按钮或拔插 USB）")
-            self.status_bar.showMessage("设备无响应 - 需要手动重启")
-            return
-
-        # 3. 执行新代码
-        self.output_console.append_info(f"\n[运行] 执行代码...")
-        self.output_console.append_output("-" * 50)
-        self.status_bar.showMessage("正在执行...")
-
-        if self.code_runner.run_code(code):
-            self.status_bar.showMessage("代码执行成功")
-        else:
-            self.status_bar.showMessage("代码执行失败")
+        # 触发 Worker 执行代码（异步执行）
+        self.worker.do_run_code(code)
 
     def on_stop_code(self):
         """停止代码按钮处理"""
-        # 1. 确保连接
-        if not self.device_manager.is_connected():
-            self.output_console.append_info("[系统] 正在连接设备...")
-            self.status_bar.showMessage("正在连接...")
-            if not self.device_manager.connect():
-                self.output_console.append_error("[错误] 设备连接失败")
-                self.status_bar.showMessage("连接失败")
-                return
+        # 禁用按钮，防止重复点击
+        self.set_buttons_enabled(False)
 
-        # 2. 发送停止信号
-        self.output_console.append_info("[停止] 正在停止代码...")
-        self.status_bar.showMessage("正在停止...")
+        # 触发 Worker 停止代码（异步执行）
+        self.worker.do_stop()
 
-        if self.code_runner.stop():
-            self.status_bar.showMessage("停止成功")
-        else:
-            self.status_bar.showMessage("停止失败")
+    def on_connect_finished(self, success):
+        """连接完成处理"""
+        # 连接完成后，不需要特殊处理（状态栏已经通过 status_changed 更新）
+        pass
 
-    # def on_reset_device(self):
-    #     """软重启设备按钮处理 - 暂时禁用"""
-    #     self.output_console.append_info("[重启] 正在软重启设备...")
-    #     self.code_runner.soft_reset()
+    def on_run_finished(self, success):
+        """运行完成处理"""
+        # 恢复按钮状态
+        self.set_buttons_enabled(True)
+
+    def on_stop_finished(self, success):
+        """停止完成处理"""
+        # 恢复按钮状态
+        self.set_buttons_enabled(True)
+
+    def set_buttons_enabled(self, enabled: bool):
+        """设置按钮启用/禁用状态"""
+        self.toolbar.run_action.setEnabled(enabled)
+        self.toolbar.stop_action.setEnabled(enabled)
 
     def closeEvent(self, event):
         """窗口关闭事件"""
+        # 1. 断开设备（在 Worker 线程中执行）
         self.output_console.append_info("[系统] 正在断开设备连接...")
-        self.device_manager.disconnect()
+        self.worker.do_disconnect()
+
+        # 2. 停止并等待线程结束
+        self.worker_thread.quit()
+        self.worker_thread.wait(3000)  # 最多等待 3 秒
+
+        # 3. 接受关闭事件
         event.accept()
