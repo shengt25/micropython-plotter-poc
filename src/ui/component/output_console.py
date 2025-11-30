@@ -12,7 +12,7 @@ class OutputConsole(QTextEdit):
         self.setReadOnly(True)
 
         # 设置等宽字体
-        font = QFont("Courier New", 10)
+        font = QFont("Courier New", 12)
         font.setStyleHint(QFont.StyleHint.Monospace)
         self.setFont(font)
 

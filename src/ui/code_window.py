@@ -62,8 +62,8 @@ class CodeWindow(QMainWindow):
         main_splitter = QSplitter(Qt.Orientation.Horizontal)
         main_splitter.addWidget(self.file_browser)
         main_splitter.addWidget(right_splitter)
-        main_splitter.setStretchFactor(0, 4)  # 文件浏览器 40%
-        main_splitter.setStretchFactor(1, 6)  # 右侧 60%
+        main_splitter.setStretchFactor(0, 3)  # 文件浏览器 30%
+        main_splitter.setStretchFactor(1, 7)  # 右侧 70%
 
         # 创建中央部件
         central_widget = QWidget()
