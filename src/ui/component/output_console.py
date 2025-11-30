@@ -22,18 +22,24 @@ class OutputConsole(QTextEdit):
     def append_output(self, message: str):
         """追加普通输出（黑色）"""
         self.setTextColor("#000000")
+        # Strip trailing newlines since QTextEdit.append() adds one automatically
+        message = message.rstrip('\r\n')
         self.append(message)
         self.scroll_to_bottom()
 
     def append_error(self, message: str):
         """追加错误信息（红色）"""
         self.setTextColor("#D32F2F")  # 红色
+        # Strip trailing newlines since QTextEdit.append() adds one automatically
+        message = message.rstrip('\r\n')
         self.append(message)
         self.scroll_to_bottom()
 
     def append_info(self, message: str):
         """追加提示信息（蓝色）"""
         self.setTextColor("#1976D2")  # 蓝色
+        # Strip trailing newlines since QTextEdit.append() adds one automatically
+        message = message.rstrip('\r\n')
         self.append(message)
         self.scroll_to_bottom()
 
