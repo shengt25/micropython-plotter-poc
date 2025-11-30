@@ -54,7 +54,7 @@ jobs:
       # 如果你有提交 uv.lock 文件，它会严格按照 lock 文件安装
       # 如果没有 lock 文件，它会根据 pyproject.toml 安装
       - name: Install Dependencies
-        run: uv sync
+        run: uv sync --python 3.13
 
       # Linux 必须安装 patchelf (Nuitka 需要)
       - name: Install Linux Dependencies
