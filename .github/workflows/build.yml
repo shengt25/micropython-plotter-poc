@@ -1,15 +1,14 @@
 name: Build Binaries
 
-# 必须添加这个权限，否则无法上传到 Release
 permissions:
   contents: write
 
 on:
   push:
     tags:
-      - 'v*'  # 只有推送到 v 开头的标签时才触发构建发布
+      - 'v*'
     branches:
-      - main  # 推送到 main 时也构建（用于测试），但不发布
+      - main
   workflow_dispatch:
 
 jobs:
@@ -20,25 +19,29 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Windows: 输出 .exe
           - os: windows-latest
             os_name: windows
             arch: x86_64
             output_name: micropython-plotter_windows_x64.exe
 
+          # Linux: 输出 .bin
           - os: ubuntu-22.04
             os_name: linux
             arch: x86_64
             output_name: micropython-plotter_linux_x64.bin
 
+          # macOS Intel: 输出 .app
           - os: macos-15-intel
             os_name: macos
             arch: x86_64
-            output_name: micropython-plotter_macos_intel
+            output_name: micropython-plotter_macos_intel.app
 
+          # macOS Apple Silicon: 输出 .app
           - os: macos-15
             os_name: macos
             arch: arm64
-            output_name: micropython-plotter_macos_arm64
+            output_name: micropython-plotter_macos_arm64.app
 
     steps:
       - name: Checkout Code
@@ -62,36 +65,55 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y patchelf
 
-      # 编译步骤（含图标逻辑）
+      # 编译步骤
       - name: Build with Nuitka
         shell: bash
         run: |
-          ICON_ARG=""
+          MODE_ARG="--onefile"
+          EXTRA_ARGS=""
+          
           if [ "$RUNNER_OS" == "Windows" ]; then
-            ICON_ARG="--windows-icon-from-ico=assets/micropython-plotter.ico"
+            EXTRA_ARGS="--windows-disable-console --windows-icon-from-ico=assets/micropython-plotter.ico"
+          
           elif [ "$RUNNER_OS" == "macOS" ]; then
-            ICON_ARG="--macos-app-icon=assets/micropython-plotter.icns"
+            EXTRA_ARGS="--macos-create-app-bundle --macos-app-icon=assets/micropython-plotter.icns"
           fi
           
+          echo "Building with args: $MODE_ARG $EXTRA_ARGS"
+
           uv run nuitka src/main.py \
-            --onefile \
+            $MODE_ARG \
             --assume-yes-for-downloads \
             --enable-plugin=pyside6 \
             --output-filename=${{ matrix.output_name }} \
-            $ICON_ARG
+            $EXTRA_ARGS
 
-      # 上传构建产物 (Run Summary 页面)
+      # 处理打包
+      # 如果是 macOS .app，GitHub 无法直接 Release，必须压缩成 zip
+      - name: Prepare Artifacts
+        shell: bash
+        run: |
+          OUTPUT_NAME="${{ matrix.output_name }}"
+          
+          if [[ "$OUTPUT_NAME" == *.app ]]; then
+            echo "Detected macOS App Bundle. Zipping..."
+            zip -r "${OUTPUT_NAME}.zip" "$OUTPUT_NAME"
+            
+            echo "UPLOAD_PATH=${OUTPUT_NAME}.zip" >> $GITHUB_ENV
+          else
+            echo "UPLOAD_PATH=${OUTPUT_NAME}" >> $GITHUB_ENV
+          fi
+
+      # 上传构建产物 (Run Summary)
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          # 这里的 name 是你在 Actions 网页上看到的压缩包名字
           name: ${{ matrix.output_name }}
-          # 这里的 path 必须匹配上面定义的 output_name
-          path: ${{ matrix.output_name }}
+          path: ${{ env.UPLOAD_PATH }}
 
       # 发布到 Releases 页面
       - name: Upload to Release
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: ${{ matrix.output_name }}
+          files: ${{ env.UPLOAD_PATH }}
