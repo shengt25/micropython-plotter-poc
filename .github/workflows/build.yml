@@ -56,7 +56,7 @@ jobs:
         run: uv python install 3.11
 
       - name: Install Dependencies
-        run: uv sync
+        run: uv sync --python 3.13
 
       # Linux 依赖
       - name: Install Linux Dependencies
