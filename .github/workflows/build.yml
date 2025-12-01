@@ -56,7 +56,7 @@ jobs:
         run: uv python install 3.11
 
       - name: Install Dependencies
-        run: uv sync --python 3.13
+        run: uv sync --python 3.11
 
       # Linux 依赖
       - name: Install Linux Dependencies
@@ -76,12 +76,12 @@ jobs:
           if [ "$RUNNER_OS" == "Windows" ]; then
             # Windows: 使用单文件模式 (方便分发)
             # 开启 --windows-disable-console 隐藏黑框
-            MODE_ARG="--onefile"
+            MODE_ARG="--onefile --output-filename=${{ matrix.output_name }}"
             EXTRA_ARGS="--windows-disable-console --windows-icon-from-ico=assets/micropython-plotter.ico"
           
           elif [ "$RUNNER_OS" == "Linux" ]; then
              # Linux: 使用单文件模式
-             MODE_ARG="--onefile"
+             MODE_ARG="--onefile --output-filename=${{ matrix.output_name }}"
           
           elif [ "$RUNNER_OS" == "macOS" ]; then
             # macOS: 使用独立模式 (因为 .app 本身就是文件夹，不需要再打包成单文件，这样启动更快)
@@ -96,8 +96,8 @@ jobs:
           uv run nuitka src/main.py \
             $MODE_ARG \
             --assume-yes-for-downloads \
+            --include-module=PySide6.QtOpenGL \
             --enable-plugin=pyside6 \
-            --output-filename=${{ matrix.output_name }} \
             $EXTRA_ARGS
 
       # 处理打包
@@ -108,7 +108,9 @@ jobs:
           OUTPUT_NAME="${{ matrix.output_name }}"
           
           if [[ "$OUTPUT_NAME" == *.app ]]; then
-            echo "Detected macOS App Bundle. Zipping..."
+            echo "Detected macOS App Bundle Renaming 'main.app' to '$OUTPUT_NAME'..."
+            mv main.app "$OUTPUT_NAME"
+            echo "Zipping..."
             zip -r "${OUTPUT_NAME}.zip" "$OUTPUT_NAME"
             
             echo "UPLOAD_PATH=${OUTPUT_NAME}.zip" >> $GITHUB_ENV

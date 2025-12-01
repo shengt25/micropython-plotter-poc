@@ -1,5 +1,6 @@
 from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QSplitter, QStatusBar, QMessageBox
 from PySide6.QtCore import Qt, QThread
+from .plotter_window import PlotterWindow
 from .component.toolbar import CodeToolBar
 from .component.tab_editor import TabEditorWidget
 from .component.output_console import OutputConsole
@@ -364,8 +365,6 @@ class CodeWindow(QMainWindow):
     def on_plot_clicked(self):
         """绘图按钮点击处理"""
         if self.plotter_window is None:
-            # 创建绘图窗口
-            from .plotter_window import PlotterWindow
             self.plotter_window = PlotterWindow()
             self.plotter_window.closed.connect(self._on_plotter_closed)
 
