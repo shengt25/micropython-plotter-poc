@@ -1,11 +1,15 @@
 name: Build Binaries
 
+# 必须添加这个权限，否则无法上传到 Release
+permissions:
+  contents: write
+
 on:
   push:
     tags:
-      - 'v*'
+      - 'v*'  # 只有推送到 v 开头的标签时才触发构建发布
     branches:
-      - main
+      - main  # 推送到 main 时也构建（用于测试），但不发布
   workflow_dispatch:
 
 jobs:
@@ -19,67 +23,73 @@ jobs:
           - os: windows-latest
             os_name: windows
             arch: x86_64
-            output_name: myapp.exe
+            output_name: micropython-plotter.exe
 
           - os: ubuntu-22.04
             os_name: linux
             arch: x86_64
-            output_name: myapp.bin
+            output_name: micropython-plotter.bin
 
           - os: macos-13
             os_name: macos
             arch: x86_64
-            output_name: myapp_intel
+            output_name: micropython-plotter_intel
 
           - os: macos-14
             os_name: macos
             arch: arm64
-            output_name: myapp_arm64
+            output_name: micropython-plotter_arm64
 
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # 安装 uv
       - name: Install uv
         uses: astral-sh/setup-uv@v3
         with:
-          enable-cache: true # 开启缓存，加快二次构建速度
+          enable-cache: true
 
-      # 设置 Python 版本
       - name: Set up Python
         run: uv python install 3.11
 
-      # 使用 uv sync 安装依赖
-      # 如果你有提交 uv.lock 文件，它会严格按照 lock 文件安装
-      # 如果没有 lock 文件，它会根据 pyproject.toml 安装
       - name: Install Dependencies
-        run: uv sync --python 3.13
+        run: uv sync
 
-      # Linux 必须安装 patchelf (Nuitka 需要)
+      # Linux 依赖
       - name: Install Linux Dependencies
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y patchelf
 
-      # 运行 Nuitka 编译
-      # 注意：直接使用 'uv run nuitka'，它会自动使用虚拟环境中的 nuitka 和库
-      # 无需手动 source .venv/bin/activate
+      # 编译步骤（含图标逻辑）
       - name: Build with Nuitka
         shell: bash
         run: |
+          ICON_ARG=""
+          if [ "$RUNNER_OS" == "Windows" ]; then
+            ICON_ARG="--windows-icon-from-ico=assets/icon.ico"
+          elif [ "$RUNNER_OS" == "macOS" ]; then
+            ICON_ARG="--macos-app-icon=assets/icon.icns"
+          fi
+          
           uv run nuitka src/main.py \
             --onefile \
             --assume-yes-for-downloads \
             --enable-plugin=pyside6 \
             --output-filename=${{ matrix.output_name }} \
+            $ICON_ARG
 
-      # 上传编译产物
+      # 依然保留这个，方便在 Actions 页面查错或手动下载
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: myapp-${{ matrix.os_name }}-${{ matrix.arch }}
-          path: |
-            ${{ matrix.output_name }}
-            *.app/**/*
+          name: micropython-plotter-${{ matrix.os_name }}-${{ matrix.arch }}
+          path: ${{ matrix.output_name }}
+
+      # 新增：发布到 Releases 页面
+      - name: Upload to Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/') # 只有打 tag 时才执行
+        with:
+          files: ${{ matrix.output_name }}
