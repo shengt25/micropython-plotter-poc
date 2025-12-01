@@ -143,6 +143,7 @@ class CodeWindow(QMainWindow):
         # TabEditor -> UI
         self.tab_editor.file_modified.connect(self.on_file_modified)
         self.tab_editor.active_file_changed.connect(self.on_active_file_changed)
+        self.tab_editor.save_requested.connect(self.on_save_file)
 
         self.toolbar.port_refresh_requested.connect(lambda: self.refresh_ports())
         self.toolbar.port_selected.connect(self.on_port_selected)

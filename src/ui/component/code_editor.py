@@ -1,10 +1,13 @@
 from PySide6.QtWidgets import QPlainTextEdit
-from PySide6.QtGui import QFont, QKeyEvent
-from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont, QKeyEvent, QKeySequence
+from PySide6.QtCore import Qt, Signal
 from .syntax_highlighter import PythonSyntaxHighlighter
 
 
 class CodeEditor(QPlainTextEdit):
+
+    # 定义保存信号
+    save_requested = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -37,7 +40,14 @@ class CodeEditor(QPlainTextEdit):
         self.highlighter = PythonSyntaxHighlighter(self.document())
 
     def keyPressEvent(self, event: QKeyEvent):
-        """重写键盘事件，将Tab键转换为4个空格"""
+        """重写键盘事件，处理Tab键和保存快捷键"""
+        # 检查是否是保存快捷键 (Cmd+S 在 macOS, Ctrl+S 在 Windows/Linux)
+        if event.matches(QKeySequence.StandardKey.Save):
+            # 发射保存信号
+            self.save_requested.emit()
+            event.accept()
+            return
+
         if event.key() == Qt.Key.Key_Tab:
             # 插入4个空格而不是Tab字符
             cursor = self.textCursor()

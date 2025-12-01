@@ -9,6 +9,7 @@ class TabEditorWidget(QWidget):
     # Signals
     file_modified = Signal(bool)  # 当前活动标签的修改状态改变
     active_file_changed = Signal(str)  # 活动文件改变 (path or "")
+    save_requested = Signal()  # 保存请求 (来自快捷键)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -34,6 +35,7 @@ class TabEditorWidget(QWidget):
         """创建默认的未命名标签"""
         editor = CodeEditor()
         editor.textChanged.connect(lambda: self._on_text_changed(editor))
+        editor.save_requested.connect(self.save_requested.emit)
 
         index = self.tab_widget.addTab(editor, "Untitled")
         self.tab_widget.setTabToolTip(index, "Untitled")
@@ -63,6 +65,7 @@ class TabEditorWidget(QWidget):
         editor = CodeEditor()
         editor.set_code(content)
         editor.textChanged.connect(lambda: self._on_text_changed(editor))
+        editor.save_requested.connect(self.save_requested.emit)
 
         # 提取文件名
         filename = path.split('/')[-1]
