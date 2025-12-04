@@ -26,9 +26,9 @@ class CodeToolBar(QToolBar):
         super().__init__("Code Control", parent)
 
         self.new_action = QAction("New", self)
+        self.save_action = QAction("Save", self)
         self.run_action = QAction("Run", self)
         self.stop_action = QAction("Stop/Reset", self)
-        self.save_action = QAction("Save", self)
         self.plot_action = QAction("Plot", self)
         self.port_combo = PortComboBox(self)
         self.port_combo.setPlaceholderText("Select port…")
@@ -46,10 +46,11 @@ class CodeToolBar(QToolBar):
         self.save_action.setEnabled(False)
 
         self.addAction(self.new_action)
+        self.addAction(self.save_action)
+        self.addSeparator()
         self.addAction(self.run_action)
         self.addAction(self.stop_action)
         self.addSeparator()
-        self.addAction(self.save_action)
         self.addAction(self.plot_action)
         self.addSeparator()
         self.addWidget(self.port_combo)
