@@ -76,9 +76,7 @@ class PlotStreamHandler(QObject):
                 # Emit everything before sync as text
                 if i > 0:
                     text_bytes = bytes(self.buffer[:i])
-                    text = text_bytes.decode('utf-8', errors='replace')
-                    if text:
-                        self.text_data_received.emit(text)
+                    self._emit_text_bytes(text_bytes)
                     self.buffer = self.buffer[i:]
                 sync_idx = 0
                 break
@@ -88,9 +86,7 @@ class PlotStreamHandler(QObject):
             # Emit all as text if buffer gets too large (avoid infinite growth)
             if len(self.buffer) > 1024:  # Arbitrary threshold
                 text_bytes = bytes(self.buffer)
-                text = text_bytes.decode('utf-8', errors='replace')
-                if text:
-                    self.text_data_received.emit(text)
+                self._emit_text_bytes(text_bytes)
                 self.buffer.clear()
             return None
 
@@ -172,6 +168,19 @@ class PlotStreamHandler(QObject):
 
         message = "[Plot Config] " + ", ".join(names)
         self.logger.debug(message)
-        self.text_data_received.emit(message + "\n")
         self.plot_config_received.emit(names)
         self._config_received = True
+
+    def _emit_text_bytes(self, data: bytes):
+        """Emit buffered text unless it matches our plotter protocol headers."""
+        if not data:
+            return
+
+        if data[0] == 0xAA and len(data) >= 2 and data[1] in (0x01, 0x02):
+            # Suppress known plot/config headers
+            self.logger.debug("Suppressed %d bytes of plot/config data", len(data))
+            return
+
+        text = data.decode('utf-8', errors='replace')
+        if text:
+            self.text_data_received.emit(text)

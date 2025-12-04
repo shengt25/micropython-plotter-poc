@@ -492,14 +492,8 @@ class DeviceWorker(QObject):
                         self.device_manager.serial.in_waiting
                     )
 
-                    if self.plot_mode_enabled and self.plot_handler:
-                        # 绘图模式：通过处理器解析数据包
-                        self.plot_handler.process_data(raw_data)
-                    else:
-                        # 普通模式：解码为文本
-                        text = raw_data.decode('utf-8', errors='replace')
-                        if text:
-                            self.output_received.emit(text)
+                    # 始终通过 PlotStreamHandler 解析，以滤除绘图协议数据
+                    self.plot_handler.process_data(raw_data)
 
         except Exception as e:
             logger = setup_logger(__name__)

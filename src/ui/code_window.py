@@ -20,6 +20,7 @@ class CodeWindow(QMainWindow):
 
         # 绘图窗口（按需创建）
         self.plotter_window = None
+        self.auto_open_plot = True
 
         # 创建 UI 组件
         self._setup_ui()
@@ -212,6 +213,7 @@ class CodeWindow(QMainWindow):
     def on_run_code(self):
         """运行代码按钮处理"""
         # 1. 先检查当前文件是否需要保存
+        self.auto_open_plot = True
         path, content, modified = self.tab_editor.get_current_file_info()
         if path and modified:
             # 自动保存（等待异步完成信号后才标记为已保存）
@@ -366,6 +368,7 @@ class CodeWindow(QMainWindow):
 
     def on_plot_clicked(self):
         """绘图按钮点击处理"""
+        self.auto_open_plot = True
         if self.plotter_window is None:
             self.plotter_window = PlotterWindow()
             self.plotter_window.closed.connect(self._on_plotter_closed)
@@ -382,6 +385,7 @@ class CodeWindow(QMainWindow):
         """绘图窗口关闭处理"""
         # 禁用绘图模式
         self.worker.set_plot_mode(False)
+        self.auto_open_plot = False
 
     def _forward_plot_data(self, values: list):
         """
@@ -390,11 +394,23 @@ class CodeWindow(QMainWindow):
         Args:
             values: 绘图数据值列表
         """
+        if not values:
+            return
+
+        if (not self.plotter_window or not self.plotter_window.isVisible()) and self.auto_open_plot:
+            self.on_plot_clicked()
+
         if self.plotter_window and self.plotter_window.isVisible():
             self.plotter_window.on_plot_data_received(values)
 
     def _forward_plot_config(self, names: list):
         """接收到通道配置后更新绘图窗口的图例名称"""
+        if not names:
+            return
+
+        if (not self.plotter_window or not self.plotter_window.isVisible()) and self.auto_open_plot:
+            self.on_plot_clicked()
+
         if self.plotter_window and self.plotter_window.isVisible():
             self.plotter_window.on_plot_config_received(names)
 
