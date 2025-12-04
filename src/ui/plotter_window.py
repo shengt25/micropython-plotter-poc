@@ -13,7 +13,7 @@ import pyqtgraph as pg
 class ColorSettingsDialog(QDialog):
     """Dialog for customizing plot background and curve colors"""
 
-    def __init__(self, current_bg_color, current_curve_colors, parent=None):
+    def __init__(self, current_bg_color, current_curve_colors, channel_names, channel_count, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Color Settings")
         self.setModal(True)
@@ -25,6 +25,8 @@ class ColorSettingsDialog(QDialog):
             QColor(c) if isinstance(c, str) else c
             for c in current_curve_colors
         ]
+        self.channel_names = channel_names
+        self.channel_count = channel_count
 
         self._setup_ui()
 
@@ -44,13 +46,17 @@ class ColorSettingsDialog(QDialog):
 
         # Curve color buttons
         self.curve_color_buttons = []
-        for i in range(5):
+        for i in range(self.channel_count):
+            label = self.channel_names[i] if i < len(self.channel_names) else f"Channel {i + 1}"
+            if not label:
+                label = f"Channel {i + 1}"
+
             button = QPushButton()
             button.setFixedHeight(30)
             self._update_button_color(button, self.curve_colors[i])
             button.clicked.connect(lambda checked, idx=i: self._choose_color(idx + 1))
             self.curve_color_buttons.append(button)
-            form_layout.addRow(f"Channel {i + 1} Color:", button)
+            form_layout.addRow(f"{label} Color:", button)
 
         layout.addLayout(form_layout)
 
@@ -86,8 +92,13 @@ class ColorSettingsDialog(QDialog):
             # Curve color
             curve_idx = index - 1
             current_color = self.curve_colors[curve_idx]
+            label = None
+            if 0 <= curve_idx < len(self.channel_names):
+                label = self.channel_names[curve_idx]
+            if not label:
+                label = f"Channel {curve_idx + 1}"
             new_color = QColorDialog.getColor(
-                current_color, self, f"Select Channel {curve_idx + 1} Color"
+                current_color, self, f"Select {label} Color"
             )
             if new_color.isValid():
                 self.curve_colors[curve_idx] = new_color
@@ -338,6 +349,8 @@ class PlotterWindow(QWidget):
         dialog = ColorSettingsDialog(
             self.background_color,
             self.curve_colors,
+            self.channel_names,
+            self.active_channel_count,
             parent=self
         )
 
