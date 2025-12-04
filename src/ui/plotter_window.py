@@ -252,7 +252,6 @@ class PlotterWindow(QWidget):
 
         # Title
         title_label = QLabel("Channel Settings")
-        title_label.setStyleSheet("font-weight: bold; font-size: 14px;")
         layout.addWidget(title_label)
 
         # Color settings button
@@ -263,7 +262,7 @@ class PlotterWindow(QWidget):
         layout.addSpacing(20)
 
         # Refresh rate selection
-        layout.addWidget(QLabel("Refresh Rate:"))
+        layout.addWidget(QLabel("Plot Refresh Rate:"))
         self.refresh_rate_combo = QComboBox()
         self.refresh_rate_combo.addItems(["10 Hz", "20 Hz", "30 Hz", "60 Hz"])
         self.refresh_rate_combo.setCurrentIndex(2)  # Default 30 Hz
