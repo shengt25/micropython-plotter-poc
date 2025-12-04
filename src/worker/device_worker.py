@@ -20,6 +20,7 @@ class DeviceWorker(QObject):
     list_dir_requested = Signal(str)    # 请求列出目录
     read_file_requested = Signal(str)   # 请求读取文件
     write_file_requested = Signal(str, str)  # 请求写入文件 (path, content)
+    delete_path_requested = Signal(str)  # 请求删除文件或目录
     set_port_requested = Signal(str)        # 请求切换串口
 
     # Signals - 操作完成信号
@@ -31,6 +32,7 @@ class DeviceWorker(QObject):
     list_dir_finished = Signal(bool, str, list)  # 列出目录完成 (success, path, items)
     read_file_finished = Signal(bool, str, str)  # 读取文件完成 (success, path, content)
     write_file_finished = Signal(bool, str)      # 写入文件完成 (success, path)
+    delete_path_finished = Signal(bool, str)     # 删除路径完成 (success, path)
     file_access_busy = Signal(str, str)          # 设备忙导致文件操作失败 (operation, path)
 
     # Signals - 进度信息
@@ -421,6 +423,64 @@ class DeviceWorker(QObject):
             logger.exception(f"[文件写入] 异常: {path}")
             self.progress.emit(f"[File] Failed to write: {e}")
             self.write_file_finished.emit(False, path)
+
+    @Slot(str)
+    def do_delete_path(self, path: str):
+        """删除指定路径（文件或目录）"""
+
+        logger = setup_logger(__name__)
+
+        if not self.device_manager.is_connected():
+            logger.warning("[文件删除] 设备未连接")
+            self.progress.emit("[File] Device not connected")
+            self.delete_path_finished.emit(False, path)
+            return
+
+        code = FileManager.generate_delete_path_code(path)
+        logger.debug(f"[文件删除] 准备删除: {path}")
+
+        try:
+            with self.device_manager.lock:
+                try:
+                    self.device_manager.serial.reset_input_buffer()
+                    logger.debug("[文件删除] 已清空输入缓冲区")
+                except Exception as e:
+                    logger.error(f"[文件删除] 清空缓冲区失败: {e}")
+
+                self.device_manager.serial.write(code.encode('utf-8'))
+                self.device_manager.serial.write(b'\x04')
+
+                try:
+                    response = self.device_manager.read_until(b'OK', timeout=2)
+                    if b'OK' not in response:
+                        logger.warning("[文件删除] 设备无响应或忙碌")
+                        self.file_access_busy.emit("delete path", path)
+                        self.delete_path_finished.emit(False, path)
+                        return
+                except Exception as e:
+                    logger.error(f"[文件删除] 读取确认超时: {e}")
+                    self.file_access_busy.emit("delete path", path)
+                    self.delete_path_finished.emit(False, path)
+                    return
+
+                output_bytes = self.device_manager.read_until(b'\x04\x04', timeout=5)
+                output = output_bytes.decode('utf-8', errors='replace')
+
+                success = FileManager.parse_delete_path_result(output)
+
+                if success:
+                    logger.info(f"[文件删除] 成功: {path}")
+                    self.progress.emit(f"[File] Deleted: {path}")
+                else:
+                    logger.error(f"[文件删除] 失败: {path}")
+                    self.progress.emit(f"[File] Delete failed: {path}")
+
+                self.delete_path_finished.emit(success, path)
+
+        except Exception as e:
+            logger.exception(f"[文件删除] 异常: {path}")
+            self.progress.emit(f"[File] Failed to delete: {e}")
+            self.delete_path_finished.emit(False, path)
 
     @Slot(str)
     def set_port(self, port: str):

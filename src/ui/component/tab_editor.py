@@ -261,6 +261,29 @@ class TabEditorWidget(QWidget):
         state = self.tab_states[current_index]
         return state['path'] is None
 
+    def close_file(self, path: str):
+        """关闭指定路径的标签（如果存在）"""
+        for index, state in list(self.tab_states.items()):
+            if state['path'] == path:
+                self._remove_tab_at_index(index)
+                break
+
+    def close_files_under_directory(self, dir_path: str):
+        """关闭指定目录下的所有文件标签"""
+        # 规范化目录路径（确保以 / 结尾，方便匹配）
+        normalized_dir = dir_path.rstrip('/') + '/'
+
+        # 找出所有在该目录下的文件
+        indices_to_close = []
+        for index, state in self.tab_states.items():
+            file_path = state['path']
+            if file_path and file_path.startswith(normalized_dir):
+                indices_to_close.append(index)
+
+        # 按倒序关闭（避免索引混乱）
+        for index in sorted(indices_to_close, reverse=True):
+            self._remove_tab_at_index(index)
+
     def _close_duplicate_tabs(self, current_index: int, path: str):
         duplicates = [idx for idx, state in self.tab_states.items() if state['path'] == path and idx != current_index]
         for idx in sorted(duplicates, reverse=True):

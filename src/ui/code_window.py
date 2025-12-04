@@ -48,6 +48,7 @@ class CodeWindow(QMainWindow):
         self.worker_ready = False
         self._connect_when_ready = False
         self._busy_directory_paths: set[str] = set()
+        self._pending_deletes: dict[str, bool] = {}  # 记录待删除路径的类型 {path: is_dir}
 
         # 创建文件浏览器
         self.file_browser = FileBrowser()
@@ -114,6 +115,7 @@ class CodeWindow(QMainWindow):
         self.worker.list_dir_requested.connect(self.worker.do_list_dir)
         self.worker.read_file_requested.connect(self.worker.do_read_file)
         self.worker.write_file_requested.connect(self.worker.do_write_file)
+        self.worker.delete_path_requested.connect(self.worker.do_delete_path)
         self.worker.set_port_requested.connect(self.worker.set_port)
 
         # 启动线程
@@ -146,6 +148,7 @@ class CodeWindow(QMainWindow):
         # 文件浏览器 -> Worker
         self.file_browser.dir_expand_requested.connect(self.worker.list_dir_requested.emit)
         self.file_browser.file_open_requested.connect(self.on_file_open_requested)
+        self.file_browser.delete_requested.connect(self.on_delete_requested)
 
         # Worker -> 文件浏览器
         self.worker.list_dir_finished.connect(self.on_list_dir_finished)
@@ -153,6 +156,7 @@ class CodeWindow(QMainWindow):
         # Worker -> 文件操作
         self.worker.read_file_finished.connect(self.on_read_file_finished)
         self.worker.write_file_finished.connect(self.on_write_file_finished)
+        self.worker.delete_path_finished.connect(self.on_delete_path_finished)
         self.worker.file_access_busy.connect(self.on_file_access_busy)
 
         # TabEditor -> UI
@@ -350,6 +354,14 @@ class CodeWindow(QMainWindow):
         self.file_browser.show_error(f"[File browser] Cannot list directory: {path}")
         self.output_console.append_error(f"[File browser] Cannot list directory: {path}")
 
+    def on_delete_requested(self, path: str, is_dir: bool):
+        """文件或目录删除请求"""
+        target = "folder" if is_dir else "file"
+        self.output_console.append_info(f"[File] Deleting {target}: {path}")
+        # 记录删除类型，用于删除成功后的处理
+        self._pending_deletes[path] = is_dir
+        self.worker.delete_path_requested.emit(path)
+
     def on_file_open_requested(self, path: str):
         """文件打开请求处理（双击文件）"""
         self.output_console.append_info(f"[File] Opening: {path}")
@@ -431,6 +443,33 @@ class CodeWindow(QMainWindow):
         else:
             # 保存失败，保持修改状态
             self.output_console.append_error(f"[File] Save failed: {path}")
+
+    def on_delete_path_finished(self, success: bool, path: str):
+        """文件/目录删除完成"""
+        if success:
+            # 从待删除字典中获取类型信息
+            is_dir = self._pending_deletes.pop(path, False)
+
+            # 关闭相关的标签页
+            if is_dir:
+                # 如果删除的是目录，关闭该目录下所有文件的标签页
+                self.tab_editor.close_files_under_directory(path)
+            else:
+                # 如果删除的是文件，只关闭该文件的标签页
+                self.tab_editor.close_file(path)
+
+            # 从文件浏览器中移除
+            self.file_browser.remove_entry(path)
+
+            # 刷新父目录
+            parent_dir = self._parent_directory(path)
+            self.file_browser.request_directory(parent_dir)
+
+            self.output_console.append_info(f"[File] Deleted: {path}")
+        else:
+            # 删除失败，清理待删除记录
+            self._pending_deletes.pop(path, None)
+            self.output_console.append_error(f"[File] Delete failed: {path}")
 
     def on_file_modified(self, modified: bool):
         """文件修改状态改变处理"""

@@ -158,3 +158,38 @@ except Exception as e:
             success
         """
         return '<<<SUCCESS>>>' in raw_output and '<<<ERROR>>>' not in raw_output
+
+    @staticmethod
+    def generate_delete_path_code(path: str) -> str:
+        """生成删除文件/文件夹的 MicroPython 代码"""
+        escaped_path = path.replace("'", "\\'")
+
+        code = f"""import sys, os
+def _join(parent, name):
+    return parent + '/' + name if parent != '/' else '/' + name
+
+def _remove(target):
+    if target in ('', '/'):
+        raise ValueError('Cannot delete root')
+    stat = os.stat(target)
+    is_dir = stat[0] & 0x4000
+    if is_dir:
+        for entry in os.listdir(target):
+            _remove(_join(target, entry))
+        os.rmdir(target)
+    else:
+        os.remove(target)
+
+try:
+    _remove('{escaped_path}')
+    sys.stdout.write('<<<SUCCESS>>>')
+except Exception as e:
+    sys.stdout.write('<<<ERROR>>>')
+    sys.stdout.write(str(e))
+"""
+        return code.strip()
+
+    @staticmethod
+    def parse_delete_path_result(raw_output: str) -> bool:
+        """解析删除结果"""
+        return '<<<SUCCESS>>>' in raw_output and '<<<ERROR>>>' not in raw_output
