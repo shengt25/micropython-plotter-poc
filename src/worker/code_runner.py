@@ -11,7 +11,6 @@ class CodeRunner(QObject):
     """
 
     # Qt Signals
-    output_received = Signal(str)  # 输出消息
     error_received = Signal(str)   # 错误消息
 
     def __init__(self, device_manager: DeviceManager):
@@ -43,7 +42,6 @@ class CodeRunner(QObject):
                 self.error_received.emit(f"Execution failed: {error_msg}")
                 return False
 
-            self.output_received.emit(f"[CodeRunner] Running: {filepath}")
             return True
 
         except Exception as e:
@@ -97,13 +95,26 @@ class CodeRunner(QObject):
 
         logger.info("[停止代码] 开始执行停止操作")
 
+        # 检查串口是否存在且打开
+        if not self.dm.serial or not self.dm.serial.is_open:
+            logger.warning("[停止代码] 串口未打开")
+            return None
+
         try:
             with self.dm.lock:
-                # 1. 发送 Ctrl+C（多次，确保中断）
+                # 1. 交替发送 Ctrl+C 和 Ctrl+D，增强中断能力
+                # Ctrl+C 用于中断运行的程序
+                # Ctrl+D 用于执行并触发 soft reset
                 for i in range(3):
-                    self.dm.serial.write(b'\x03')  # Ctrl+C
-                    logger.debug(f"[停止代码] 发送 Ctrl+C (尝试 {i+1}/3)")
-                    time.sleep(0.1)
+                    # 发送 Ctrl+C
+                    self.dm.serial.write(b'\x03')
+                    logger.debug(f"[停止代码] 发送 Ctrl+C (尝试 {i+1}/5)")
+                    time.sleep(0.05)
+
+                    # 发送 Ctrl+D
+                    self.dm.serial.write(b'\x04')
+                    logger.debug(f"[停止代码] 发送 Ctrl+D (尝试 {i+1}/5)")
+                    time.sleep(0.05)
 
                 # 2. 清空缓冲区
                 try:
@@ -112,9 +123,9 @@ class CodeRunner(QObject):
                 except:
                     pass
 
-                # 3. 发送 Ctrl+D 执行 soft reset（关键修复）
+                # 3. 最后再发送一次 Ctrl+D 确保进入 soft reset
                 self.dm.serial.write(b'\x04')
-                logger.debug("[停止代码] 发送 Ctrl+D (soft reset)")
+                logger.debug("[停止代码] 最后发送 Ctrl+D (soft reset)")
                 time.sleep(0.5)  # 等待设备重启
 
                 # 4. 重新进入 Raw REPL（显式发送 Ctrl+A）
@@ -133,7 +144,6 @@ class CodeRunner(QObject):
                 self.dm.read_until(b'>', timeout=1)
 
                 logger.info("[停止代码] 软重启成功，REPL 就绪")
-                self.output_received.emit("[System] Program stopped")
                 return True
 
         except SerialException as e:

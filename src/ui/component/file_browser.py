@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import (
     QWidget, QTreeWidget, QTreeWidgetItem, QTreeWidgetItemIterator,
-    QVBoxLayout, QLabel
+    QVBoxLayout, QLabel, QMenu, QMessageBox
 )
 from PySide6.QtCore import Signal, Qt
 
@@ -12,6 +12,8 @@ class FileBrowser(QWidget):
     dir_expand_requested = Signal(str)  # 请求展开目录
     file_selected = Signal(str)         # 文件被选中（可选）
     file_open_requested = Signal(str)   # 请求打开文件（双击文件）
+    directory_loaded = Signal(str, list)  # 某个目录加载完成
+    delete_requested = Signal(str, bool)  # 请求删除路径
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -30,6 +32,8 @@ class FileBrowser(QWidget):
         self.tree.itemExpanded.connect(self._on_item_expanded)
         self.tree.itemDoubleClicked.connect(self._on_item_double_clicked)
         self.tree.setExpandsOnDoubleClick(False)
+        self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.tree.customContextMenuRequested.connect(self._on_context_menu_requested)
         layout.addWidget(self.tree)
 
         # 占位文本
@@ -82,6 +86,18 @@ class FileBrowser(QWidget):
         self._loading_paths.discard(path)
         self._clear_children(parent)
         self._populate_children(parent, items, path)
+        self.directory_loaded.emit(path, items)
+
+    def remove_entry(self, path: str):
+        """从树中移除指定路径"""
+        item = self._path_to_item.pop(path, None)
+        if not item:
+            return
+        parent = item.parent() or self.tree.invisibleRootItem()
+        index = parent.indexOfChild(item)
+        if index >= 0:
+            parent.takeChild(index)
+        self._remove_subtree(item)
 
     def _populate_children(self, parent: QTreeWidgetItem, items: list, path: str):
         """为指定父节点填充子节点"""
@@ -137,6 +153,39 @@ class FileBrowser(QWidget):
 
         self.file_open_requested.emit(path)
 
+    def _on_context_menu_requested(self, position):
+        """右键菜单"""
+        item = self.tree.itemAt(position)
+        if not item:
+            return
+
+        path = item.data(0, Qt.ItemDataRole.UserRole)
+        is_dir = bool(item.data(0, Qt.ItemDataRole.UserRole + 1))
+
+        if not path or path == self._root_path:
+            return
+
+        self.tree.setCurrentItem(item)
+
+        menu = QMenu(self)
+        delete_action = menu.addAction("Delete")
+        action = menu.exec(self.tree.viewport().mapToGlobal(position))
+
+        if action == delete_action:
+            self._confirm_and_request_delete(path, is_dir)
+
+    def _confirm_and_request_delete(self, path: str, is_dir: bool):
+        target_label = "folder" if is_dir else "file"
+        reply = QMessageBox.question(
+            self,
+            "Delete",
+            f"Delete {target_label}: {path}?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            self.delete_requested.emit(path, is_dir)
+
     def _request_directory(self, path: str):
         if path in self._loading_paths:
             return
@@ -157,3 +206,69 @@ class FileBrowser(QWidget):
             self._remove_subtree(child)
         del item
 
+    def request_directory(self, path: str):
+        """对外暴露的加载目录接口"""
+        self._request_directory(path)
+
+    def cancel_directory_request(self, path: str):
+        """外部通知目录加载失败，恢复请求状态"""
+        self._loading_paths.discard(path)
+
+    def get_directory_entries(self, path: str):
+        """获取指定目录的子项（如果已加载）"""
+        if path == self._root_path:
+            parent = self.tree.invisibleRootItem()
+        else:
+            parent = self._path_to_item.get(path)
+
+        if not parent:
+            return None
+
+        if parent.childCount() == 0:
+            return []
+
+        first_child = parent.child(0)
+        if first_child.isDisabled():
+            return None
+
+        entries = []
+        for i in range(parent.childCount()):
+            child = parent.child(i)
+            name = child.text(0)
+            is_dir = child.data(0, Qt.ItemDataRole.UserRole + 1)
+            entries.append((name, bool(is_dir)))
+
+        return entries
+
+    def get_known_directories(self) -> list[str]:
+        """返回当前已知的设备目录列表"""
+        directories = {'/'}
+        iterator = QTreeWidgetItemIterator(self.tree)
+        while iterator.value():
+            item = iterator.value()
+            path = item.data(0, Qt.ItemDataRole.UserRole)
+            is_dir = item.data(0, Qt.ItemDataRole.UserRole + 1)
+            if path and is_dir:
+                directories.add(path)
+            iterator += 1
+        return sorted(directories)
+
+    def get_selected_directory(self) -> str:
+        """返回当前选中的目录，如果选中的是文件则返回其父目录"""
+        item = self.tree.currentItem()
+        while item:
+            path = item.data(0, Qt.ItemDataRole.UserRole)
+            is_dir = item.data(0, Qt.ItemDataRole.UserRole + 1)
+            if path and is_dir:
+                return path
+            item = item.parent()
+        return '/'
+
+    def path_exists(self, path: str) -> tuple[bool, bool | None]:
+        if path == '/':
+            return True, True
+        item = self._path_to_item.get(path)
+        if not item:
+            return False, None
+        is_dir = bool(item.data(0, Qt.ItemDataRole.UserRole + 1))
+        return True, is_dir

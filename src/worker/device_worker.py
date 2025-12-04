@@ -20,6 +20,7 @@ class DeviceWorker(QObject):
     list_dir_requested = Signal(str)    # 请求列出目录
     read_file_requested = Signal(str)   # 请求读取文件
     write_file_requested = Signal(str, str)  # 请求写入文件 (path, content)
+    delete_path_requested = Signal(str)  # 请求删除文件或目录
     set_port_requested = Signal(str)        # 请求切换串口
 
     # Signals - 操作完成信号
@@ -31,6 +32,8 @@ class DeviceWorker(QObject):
     list_dir_finished = Signal(bool, str, list)  # 列出目录完成 (success, path, items)
     read_file_finished = Signal(bool, str, str)  # 读取文件完成 (success, path, content)
     write_file_finished = Signal(bool, str)      # 写入文件完成 (success, path)
+    delete_path_finished = Signal(bool, str)     # 删除路径完成 (success, path)
+    file_access_busy = Signal(str, str)          # 设备忙导致文件操作失败 (operation, path)
 
     # Signals - 进度信息
     progress = Signal(str)              # 进度消息（显示在输出控制台）
@@ -42,6 +45,7 @@ class DeviceWorker(QObject):
 
     # Signals - 绘图数据
     plot_data_received = Signal(list)  # 绘图数据包
+    plot_config_received = Signal(list)  # 绘图通道配置
 
     # Signals - 端口变化
     port_changed = Signal(str)
@@ -71,11 +75,11 @@ class DeviceWorker(QObject):
         self.plot_handler = PlotStreamHandler(self.device_manager)
 
         # 连接 CodeRunner 的 Signals 并转发到 UI
-        self.code_runner.output_received.connect(self.output_received.emit)
         self.code_runner.error_received.connect(self.error_received.emit)
 
         # 连接 PlotStreamHandler 的 Signals
         self.plot_handler.plot_data_received.connect(self.plot_data_received.emit)
+        self.plot_handler.plot_config_received.connect(self.plot_config_received.emit)
         self.plot_handler.text_data_received.connect(self.output_received.emit)
 
         # 创建后台监控定时器
@@ -142,6 +146,8 @@ class DeviceWorker(QObject):
         self.progress.emit("\n[Info] Running code...")
         self.progress.emit("-" * 50)
         self.status_changed.emit("Running...")
+        if self.plot_handler:
+            self.plot_handler.reset_config_state()
 
         success = self.code_runner.run_code(code)
 
@@ -162,25 +168,16 @@ class DeviceWorker(QObject):
 
         步骤：
         1. 停止后台监控
-        2. 检查连接
-        3. 发送停止信号
-        4. 如果串口异常，自动重新连接
+        2. 直接发送停止信号（不先握手，避免等待超时）
+        3. 如果串口异常，自动重新连接
         """
         # 1. 停止后台监控
         if self.monitor_timer and self.monitor_timer.isActive():
             self.monitor_timer.stop()
 
-        # 2. 确保连接
-        if not self.device_manager.is_connected():
-            self.progress.emit("[System] Connecting to device...")
-            self.status_changed.emit("Connecting...")
-            if not self.device_manager.connect():
-                self.progress.emit("[System] Device connection failed")
-                self.status_changed.emit("Connection failed")
-                self.stop_finished.emit(False)
-                return
-
-        # 2. 发送停止信号
+        # 2. 直接发送停止信号（无论是否显示为已连接）
+        # 即使串口状态不明，也先尝试发送 Ctrl+C/Ctrl+D
+        # 这样可以避免在设备疯狂输出时等待握手超时
         self.progress.emit("[Stop] Stopping code execution...")
         self.status_changed.emit("Stopping...")
 
@@ -254,6 +251,7 @@ class DeviceWorker(QObject):
                 response = self.device_manager.read_until(b'OK', timeout=2)
                 if b'OK' not in response:
                     logger.warning(f"[文件浏览器] 未收到确认: {path}")
+                    self.file_access_busy.emit("list directory", path)
                     self.list_dir_finished.emit(False, path, [])
                     return
 
@@ -317,21 +315,13 @@ class DeviceWorker(QObject):
 
                     if b'OK' not in response:
                         logger.warning(f"[文件读取] 设备无响应或忙碌，响应: {response[:50]}")
-
-                        # 友好提示用户
-                        self.progress.emit("[File] Device busy or not responding")
-                        self.progress.emit("[Tip] If device is running code, please click Stop button")
-
+                        self.file_access_busy.emit("read file", path)
                         self.read_file_finished.emit(False, path, "")
                         return
 
                 except Exception as e:
                     logger.error(f"[文件读取] 读取确认超时: {e}")
-
-                    # 友好提示用户
-                    self.progress.emit("[File] Device response timeout")
-                    self.progress.emit("[Tip] Please click Stop button or check device connection")
-
+                    self.file_access_busy.emit("read file", path)
                     self.read_file_finished.emit(False, path, "")
                     return
 
@@ -401,21 +391,13 @@ class DeviceWorker(QObject):
 
                     if b'OK' not in response:
                         logger.warning(f"[文件写入] 设备无响应或忙碌")
-
-                        # 友好提示用户
-                        self.progress.emit("[File] Device busy or not responding")
-                        self.progress.emit("[Tip] If device is running code, please click Stop button")
-
+                        self.file_access_busy.emit("write file", path)
                         self.write_file_finished.emit(False, path)
                         return
 
                 except Exception as e:
                     logger.error(f"[文件写入] 读取确认超时: {e}")
-
-                    # 友好提示用户
-                    self.progress.emit("[File] Device response timeout")
-                    self.progress.emit("[Tip] Please click Stop button or check device connection")
-
+                    self.file_access_busy.emit("write file", path)
                     self.write_file_finished.emit(False, path)
                     return
 
@@ -443,6 +425,64 @@ class DeviceWorker(QObject):
             self.write_file_finished.emit(False, path)
 
     @Slot(str)
+    def do_delete_path(self, path: str):
+        """删除指定路径（文件或目录）"""
+
+        logger = setup_logger(__name__)
+
+        if not self.device_manager.is_connected():
+            logger.warning("[文件删除] 设备未连接")
+            self.progress.emit("[File] Device not connected")
+            self.delete_path_finished.emit(False, path)
+            return
+
+        code = FileManager.generate_delete_path_code(path)
+        logger.debug(f"[文件删除] 准备删除: {path}")
+
+        try:
+            with self.device_manager.lock:
+                try:
+                    self.device_manager.serial.reset_input_buffer()
+                    logger.debug("[文件删除] 已清空输入缓冲区")
+                except Exception as e:
+                    logger.error(f"[文件删除] 清空缓冲区失败: {e}")
+
+                self.device_manager.serial.write(code.encode('utf-8'))
+                self.device_manager.serial.write(b'\x04')
+
+                try:
+                    response = self.device_manager.read_until(b'OK', timeout=2)
+                    if b'OK' not in response:
+                        logger.warning("[文件删除] 设备无响应或忙碌")
+                        self.file_access_busy.emit("delete path", path)
+                        self.delete_path_finished.emit(False, path)
+                        return
+                except Exception as e:
+                    logger.error(f"[文件删除] 读取确认超时: {e}")
+                    self.file_access_busy.emit("delete path", path)
+                    self.delete_path_finished.emit(False, path)
+                    return
+
+                output_bytes = self.device_manager.read_until(b'\x04\x04', timeout=5)
+                output = output_bytes.decode('utf-8', errors='replace')
+
+                success = FileManager.parse_delete_path_result(output)
+
+                if success:
+                    logger.info(f"[文件删除] 成功: {path}")
+                    self.progress.emit(f"[File] Deleted: {path}")
+                else:
+                    logger.error(f"[文件删除] 失败: {path}")
+                    self.progress.emit(f"[File] Delete failed: {path}")
+
+                self.delete_path_finished.emit(success, path)
+
+        except Exception as e:
+            logger.exception(f"[文件删除] 异常: {path}")
+            self.progress.emit(f"[File] Failed to delete: {e}")
+            self.delete_path_finished.emit(False, path)
+
+    @Slot(str)
     def set_port(self, port: str):
         """设置串口并重新连接（如果需要）"""
         if not self.device_manager:
@@ -465,6 +505,8 @@ class DeviceWorker(QObject):
         if self.plot_handler:
             # 清空缓冲区，避免残留数据
             self.plot_handler.buffer.clear()
+            if enabled:
+                self.plot_handler.reset_config_state()
 
     def _monitor_serial_output(self):
         """
@@ -486,14 +528,8 @@ class DeviceWorker(QObject):
                         self.device_manager.serial.in_waiting
                     )
 
-                    if self.plot_mode_enabled and self.plot_handler:
-                        # 绘图模式：通过处理器解析数据包
-                        self.plot_handler.process_data(raw_data)
-                    else:
-                        # 普通模式：解码为文本
-                        text = raw_data.decode('utf-8', errors='replace')
-                        if text:
-                            self.output_received.emit(text)
+                    # 始终通过 PlotStreamHandler 解析，以滤除绘图协议数据
+                    self.plot_handler.process_data(raw_data)
 
         except Exception as e:
             logger = setup_logger(__name__)

@@ -1,5 +1,6 @@
-from typing import Optional
+from typing import Optional, Tuple, List
 from PySide6.QtCore import QObject, Signal
+from utils.logger import setup_logger
 
 
 class PlotStreamHandler(QObject):
@@ -11,14 +12,21 @@ class PlotStreamHandler(QObject):
     """
 
     # Qt Signals
-    plot_data_received = Signal(list)  # Emits [val1, val2, ...] for plot packets
-    text_data_received = Signal(str)   # Emits text for console output
+    plot_data_received = Signal(list)   # Emits [val1, val2, ...] for plot packets
+    plot_config_received = Signal(list) # Emits ['name1', 'name2', ...] for config packets
+    text_data_received = Signal(str)    # Emits text for console output
 
     def __init__(self, device_manager=None):
         super().__init__()
         self.dm = device_manager
         self.buffer = bytearray()
         self.enabled = False
+        self.logger = setup_logger(__name__)
+        self._config_received = False
+
+    def reset_config_state(self):
+        """Allow next config packet to propagate to UI."""
+        self._config_received = False
 
     def process_data(self, raw_bytes: bytes):
         """
@@ -38,15 +46,17 @@ class PlotStreamHandler(QObject):
 
         # Continuously try to extract packets or text
         while len(self.buffer) > 0:
-            packet = self._try_read_packet()
-            if packet is not None:
-                # Successfully parsed a packet
-                self.plot_data_received.emit(packet)
-            else:
-                # No more packets to extract
+            parsed = self._try_read_packet()
+            if parsed is None:
                 break
 
-    def _try_read_packet(self) -> Optional[list]:
+            packet_type, payload = parsed
+            if packet_type == "plot":
+                self.plot_data_received.emit(payload)
+            elif packet_type == "config":
+                self._handle_config_packet(payload)
+
+    def _try_read_packet(self) -> Optional[Tuple[str, List]]:
         """
         Try to extract one plot packet from buffer.
 
@@ -66,9 +76,7 @@ class PlotStreamHandler(QObject):
                 # Emit everything before sync as text
                 if i > 0:
                     text_bytes = bytes(self.buffer[:i])
-                    text = text_bytes.decode('utf-8', errors='replace')
-                    if text:
-                        self.text_data_received.emit(text)
+                    self._emit_text_bytes(text_bytes)
                     self.buffer = self.buffer[i:]
                 sync_idx = 0
                 break
@@ -78,36 +86,40 @@ class PlotStreamHandler(QObject):
             # Emit all as text if buffer gets too large (avoid infinite growth)
             if len(self.buffer) > 1024:  # Arbitrary threshold
                 text_bytes = bytes(self.buffer)
-                text = text_bytes.decode('utf-8', errors='replace')
-                if text:
-                    self.text_data_received.emit(text)
+                self._emit_text_bytes(text_bytes)
                 self.buffer.clear()
             return None
 
-        # 2. Need at least 3 bytes: AA 01 param_count
+        # 2. Need at least 2 bytes for header + packet type
+        if len(self.buffer) < 2:
+            return None
+
+        packet_type = self.buffer[1]
+        if packet_type == 0x01:
+            return self._try_read_plot_packet()
+        if packet_type == 0x02:
+            return self._try_read_config_packet()
+
+        # Unknown packet type, drop sync byte
+        self.buffer.pop(0)
+        return None
+
+    def _try_read_plot_packet(self) -> Optional[Tuple[str, List[int]]]:
+        # Need at least 3 bytes: AA 01 param_count
         if len(self.buffer) < 3:
             return None
 
-        # 3. Validate packet type (must be 0x01)
-        if self.buffer[1] != 0x01:
-            # Invalid packet type, skip sync byte and continue
-            self.buffer.pop(0)
-            return None
-
-        # 4. Read param count
         param_count = self.buffer[2]
         if not (1 <= param_count <= 5):
             # Invalid param count, skip sync byte
             self.buffer.pop(0)
             return None
 
-        # 5. Check if full packet is available
         packet_size = 3 + param_count * 2
         if len(self.buffer) < packet_size:
             # Wait for more data
             return None
 
-        # 6. Extract uint16 values (little-endian)
         values = []
         for i in range(param_count):
             idx = 3 + i * 2
@@ -115,7 +127,60 @@ class PlotStreamHandler(QObject):
             val = self.buffer[idx] | (self.buffer[idx + 1] << 8)
             values.append(val)
 
-        # 7. Remove packet from buffer
         self.buffer = self.buffer[packet_size:]
 
-        return values
+        return "plot", values
+
+    def _try_read_config_packet(self) -> Optional[Tuple[str, List[str]]]:
+        # Need at least 3 bytes: AA 02 param_count
+        if len(self.buffer) < 3:
+            return None
+
+        param_count = self.buffer[2]
+        if not (1 <= param_count <= 5):
+            self.buffer.pop(0)
+            return None
+
+        idx = 3
+        names = []
+        for _ in range(param_count):
+            if len(self.buffer) <= idx:
+                return None
+            name_len = self.buffer[idx]
+            idx += 1
+
+            end_idx = idx + name_len
+            if len(self.buffer) < end_idx:
+                return None
+
+            name_bytes = bytes(self.buffer[idx:end_idx])
+            name = name_bytes.decode("utf-8", errors="replace")
+            names.append(name)
+            idx = end_idx
+
+        # Complete packet received
+        self.buffer = self.buffer[idx:]
+        return "config", names
+
+    def _handle_config_packet(self, names: List[str]):
+        if self._config_received:
+            return
+
+        message = "[Plot Config] " + ", ".join(names)
+        self.logger.debug(message)
+        self.plot_config_received.emit(names)
+        self._config_received = True
+
+    def _emit_text_bytes(self, data: bytes):
+        """Emit buffered text unless it matches our plotter protocol headers."""
+        if not data:
+            return
+
+        if data[0] == 0xAA and len(data) >= 2 and data[1] in (0x01, 0x02):
+            # Suppress known plot/config headers
+            self.logger.debug("Suppressed %d bytes of plot/config data", len(data))
+            return
+
+        text = data.decode('utf-8', errors='replace')
+        if text:
+            self.text_data_received.emit(text)

@@ -2,18 +2,18 @@ import time
 from collections import deque
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QLabel,
-    QLineEdit, QPushButton, QDialog, QFormLayout, QDialogButtonBox,
-    QColorDialog, QComboBox
+    QPushButton, QDialog, QFormLayout, QDialogButtonBox,
+    QColorDialog, QComboBox, QSlider, QLineEdit
 )
 from PySide6.QtCore import Signal, Slot, QTimer, Qt
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QIntValidator
 import pyqtgraph as pg
 
 
 class ColorSettingsDialog(QDialog):
     """Dialog for customizing plot background and curve colors"""
 
-    def __init__(self, current_bg_color, current_curve_colors, parent=None):
+    def __init__(self, current_bg_color, current_curve_colors, channel_names, channel_count, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Color Settings")
         self.setModal(True)
@@ -25,6 +25,8 @@ class ColorSettingsDialog(QDialog):
             QColor(c) if isinstance(c, str) else c
             for c in current_curve_colors
         ]
+        self.channel_names = channel_names
+        self.channel_count = channel_count
 
         self._setup_ui()
 
@@ -44,13 +46,17 @@ class ColorSettingsDialog(QDialog):
 
         # Curve color buttons
         self.curve_color_buttons = []
-        for i in range(5):
+        for i in range(self.channel_count):
+            label = self.channel_names[i] if i < len(self.channel_names) else f"Channel {i + 1}"
+            if not label:
+                label = f"Channel {i + 1}"
+
             button = QPushButton()
             button.setFixedHeight(30)
             self._update_button_color(button, self.curve_colors[i])
             button.clicked.connect(lambda checked, idx=i: self._choose_color(idx + 1))
             self.curve_color_buttons.append(button)
-            form_layout.addRow(f"Channel {i + 1} Color:", button)
+            form_layout.addRow(f"{label} Color:", button)
 
         layout.addLayout(form_layout)
 
@@ -86,8 +92,13 @@ class ColorSettingsDialog(QDialog):
             # Curve color
             curve_idx = index - 1
             current_color = self.curve_colors[curve_idx]
+            label = None
+            if 0 <= curve_idx < len(self.channel_names):
+                label = self.channel_names[curve_idx]
+            if not label:
+                label = f"Channel {curve_idx + 1}"
             new_color = QColorDialog.getColor(
-                current_color, self, f"Select Channel {curve_idx + 1} Color"
+                current_color, self, f"Select {label} Color"
             )
             if new_color.isValid():
                 self.curve_colors[curve_idx] = new_color
@@ -143,14 +154,18 @@ class PlotterWindow(QWidget):
         self.current_refresh_rate = 30  # Default 30 Hz
 
         # Display percentage control
-        self.display_percentages = [0.10, 0.25, 0.50, 0.75, 1.0]  # 10%, 25%, 50%, 75%, 100%
         self.current_display_percentage = 0.50  # Default 50%
+        self.pending_display_percentage = self.current_display_percentage
 
         # UI components (will be created in _setup_ui)
-        self.channel_name_inputs = []
+        self.channel_names = self.default_labels.copy()
+        self.active_channel_count = len(self.default_labels)
         self.curves = []
         self.stats_text = None
         self.ui_timer = None
+        self.display_slider = None
+        self.display_input = None
+        self.display_change_timer = None
 
         # Setup UI and timers
         self._setup_ui()
@@ -178,6 +193,12 @@ class PlotterWindow(QWidget):
         splitter.setStretchFactor(1, 1)  # Control: 20%
 
         main_layout.addWidget(splitter)
+
+        # Debounce timer for display percentage updates
+        self.display_change_timer = QTimer(self)
+        self.display_change_timer.setSingleShot(True)
+        self.display_change_timer.setInterval(300)
+        self.display_change_timer.timeout.connect(self._apply_display_percentage)
 
     def _create_plot_area(self):
         """Create the plotting area with pyqtgraph"""
@@ -207,10 +228,10 @@ class PlotterWindow(QWidget):
 
         # Create 5 curves
         self.curves = []
-        for i in range(5):
+        for i in range(self.active_channel_count):
             curve = self.plot.plot(
                 pen=pg.mkPen(self.curve_colors[i], width=2),
-                name=self.default_labels[i],
+                name=self.channel_names[i],
                 skipFiniteCheck=True
             )
             self.curves.append(curve)
@@ -231,20 +252,7 @@ class PlotterWindow(QWidget):
 
         # Title
         title_label = QLabel("Channel Settings")
-        title_label.setStyleSheet("font-weight: bold; font-size: 14px;")
         layout.addWidget(title_label)
-
-        # Channel name inputs
-        layout.addWidget(QLabel("Channel Names:"))
-        for i in range(5):
-            name_input = QLineEdit(self.default_labels[i])
-            name_input.textChanged.connect(
-                lambda text, idx=i: self._update_curve_name(idx, text)
-            )
-            self.channel_name_inputs.append(name_input)
-            layout.addWidget(name_input)
-
-        layout.addSpacing(20)
 
         # Color settings button
         color_button = QPushButton("Color Settings...")
@@ -254,7 +262,7 @@ class PlotterWindow(QWidget):
         layout.addSpacing(20)
 
         # Refresh rate selection
-        layout.addWidget(QLabel("Refresh Rate:"))
+        layout.addWidget(QLabel("Plot Refresh Rate:"))
         self.refresh_rate_combo = QComboBox()
         self.refresh_rate_combo.addItems(["10 Hz", "20 Hz", "30 Hz", "60 Hz"])
         self.refresh_rate_combo.setCurrentIndex(2)  # Default 30 Hz
@@ -264,14 +272,25 @@ class PlotterWindow(QWidget):
         layout.addSpacing(20)
 
         # Display percentage selection
-        layout.addWidget(QLabel("Display Range:"))
-        self.display_percentage_combo = QComboBox()
-        self.display_percentage_combo.addItems(["10%", "25%", "50%", "75%", "100%"])
-        self.display_percentage_combo.setCurrentIndex(2)  # Default 50%
-        self.display_percentage_combo.currentIndexChanged.connect(self._on_display_percentage_changed)
-        layout.addWidget(self.display_percentage_combo)
+        layout.addWidget(QLabel("Display Range (%):"))
+        display_container = QWidget()
+        display_layout = QHBoxLayout(display_container)
+        display_layout.setContentsMargins(0, 0, 0, 0)
 
-        layout.addSpacing(20)
+        self.display_slider = QSlider(Qt.Orientation.Horizontal)
+        self.display_slider.setRange(1, 100)
+        self.display_slider.setValue(int(self.current_display_percentage * 100))
+        self.display_slider.valueChanged.connect(self._on_display_slider_changed)
+        display_layout.addWidget(self.display_slider, stretch=1)
+
+        self.display_input = QLineEdit(str(int(self.current_display_percentage * 100)))
+        self.display_input.setValidator(QIntValidator(1, 100, self))
+        self.display_input.setMaximumWidth(60)
+        self.display_input.editingFinished.connect(self._on_display_input_edited)
+        display_layout.addWidget(self.display_input)
+
+        layout.addWidget(display_container)
+        layout.addSpacing(10)
 
         # Pause/Resume button
         self.pause_button = QPushButton("Pause")
@@ -302,9 +321,11 @@ class PlotterWindow(QWidget):
         self.curves.clear()
 
         # Recreate all curves in order (0 to 4)
-        for i in range(5):
-            # Get current name from text input
-            current_name = self.channel_name_inputs[i].text() or f"Channel {i + 1}"
+        target_count = max(0, min(self.active_channel_count, len(self.curve_colors)))
+        for i in range(target_count):
+            current_name = self.channel_names[i] if i < len(self.channel_names) else f"Channel {i + 1}"
+            if not current_name:
+                current_name = f"Channel {i + 1}"
 
             # Create new curve
             curve = self.plot.plot(
@@ -313,13 +334,6 @@ class PlotterWindow(QWidget):
                 skipFiniteCheck=True
             )
             self.curves.append(curve)
-
-    @Slot(int, str)
-    def _update_curve_name(self, index, name):
-        """Update the legend name for a curve"""
-        if 0 <= index < len(self.curves):
-            # Update all curves to maintain correct order
-            self._update_legend()
 
     @Slot(int)
     def _on_refresh_rate_changed(self, index):
@@ -344,9 +358,53 @@ class PlotterWindow(QWidget):
             self.pause_button.setText("Pause")
 
     @Slot(int)
-    def _on_display_percentage_changed(self, index):
-        """Handle display percentage change"""
-        self.current_display_percentage = self.display_percentages[index]
+    def _on_display_slider_changed(self, value):
+        """Handle slider movement for display percentage"""
+        if not self.display_input:
+            return
+        self._update_display_input(value)
+        self._schedule_display_percentage_update(value / 100.0)
+
+    @Slot()
+    def _on_display_input_edited(self):
+        """Handle manual numeric entry for display percentage"""
+        if not self.display_slider or not self.display_input:
+            return
+
+        text = self.display_input.text().strip()
+        if not text:
+            value = self.display_slider.value()
+        else:
+            try:
+                value = int(text)
+            except ValueError:
+                value = self.display_slider.value()
+        value = max(1, min(100, value))
+        if value != self.display_slider.value():
+            self.display_slider.blockSignals(True)
+            self.display_slider.setValue(value)
+            self.display_slider.blockSignals(False)
+        self._update_display_input(value)
+        self._schedule_display_percentage_update(value / 100.0)
+
+    def _update_display_input(self, value: int):
+        if not self.display_input:
+            return
+        current_text = self.display_input.text()
+        new_text = str(value)
+        if current_text == new_text:
+            return
+        self.display_input.blockSignals(True)
+        self.display_input.setText(new_text)
+        self.display_input.blockSignals(False)
+
+    def _schedule_display_percentage_update(self, ratio: float):
+        self.pending_display_percentage = max(0.01, min(1.0, ratio))
+        if self.display_change_timer:
+            self.display_change_timer.start()
+
+    def _apply_display_percentage(self):
+        self.current_display_percentage = self.pending_display_percentage
 
     @Slot()
     def _open_color_settings(self):
@@ -354,6 +412,8 @@ class PlotterWindow(QWidget):
         dialog = ColorSettingsDialog(
             self.background_color,
             self.curve_colors,
+            self.channel_names,
+            self.active_channel_count,
             parent=self
         )
 
@@ -371,6 +431,26 @@ class PlotterWindow(QWidget):
         self.graphics_widget.setBackground(bg_color)
 
         # Recreate all curves with new colors
+        self._update_legend()
+
+    @Slot(list)
+    def on_plot_config_received(self, names: list):
+        """Update channel names from device configuration packets"""
+        if not names:
+            return
+
+        count = min(len(names), len(self.default_labels))
+        if count == 0:
+            return
+
+        self.active_channel_count = count
+        new_names = self.channel_names[:]
+        for i in range(count):
+            new_names[i] = names[i] or self.default_labels[i]
+        for i in range(count, len(self.default_labels)):
+            new_names[i] = self.default_labels[i]
+
+        self.channel_names = new_names
         self._update_legend()
 
     @Slot(list)
