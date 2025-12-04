@@ -1,5 +1,5 @@
 import time
-from collections import deque
+import numpy as np
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QLabel,
     QPushButton, QDialog, QFormLayout, QDialogButtonBox,
@@ -141,8 +141,12 @@ class PlotterWindow(QWidget):
         ]
 
         # Data buffers (5 channels)
-        self.buffers = [deque(maxlen=5000) for _ in range(5)]
-        self.time_buffer = deque(maxlen=5000)
+        self.max_points = 5000
+        self.time_buffer = np.zeros(self.max_points, dtype=np.float64)
+        self.channel_buffers = np.zeros((5, self.max_points), dtype=np.float32)
+        self.channel_valid_mask = np.zeros((5, self.max_points), dtype=bool)
+        self._buffer_size = 0
+        self._write_index = 0
         self.start_time = time.time()
 
         # Statistics
@@ -163,6 +167,7 @@ class PlotterWindow(QWidget):
         self.curves = []
         self.stats_text = None
         self.ui_timer = None
+        self.view_box = None  # Cached ViewBox reference
         self.display_slider = None
         self.display_input = None
         self.display_change_timer = None
@@ -220,11 +225,14 @@ class PlotterWindow(QWidget):
         self.plot.setClipToView(True)
         self.plot.setDownsampling(auto=True, mode="peak")
 
-        # Configure ViewBox
+        # Configure ViewBox and cache reference for performance
         view_box = self.plot.getViewBox()
         view_box.setAutoVisible(x=True, y=True)  # Visible data only
         view_box.enableAutoRange(axis='y', enable=True)  # Auto-range Y
         view_box.setMouseEnabled(x=False, y=True)  # Disable mouse drag on X
+
+        # Cache ViewBox reference to avoid repeated lookups
+        self.view_box = view_box
 
         # Create 5 curves
         self.curves = []
@@ -311,23 +319,36 @@ class PlotterWindow(QWidget):
         self.ui_timer.timeout.connect(self.update_ui)
         self.ui_timer.start(interval_ms)
 
+        # Track last time statistics were updated (lazy update inside update_ui)
+        self._last_stats_update = 0.0
+
+    def _update_x_range(self, visible_time):
+        """Update X-axis display range for visible data"""
+        if len(visible_time) > 0:
+            self.view_box.enableAutoRange(axis='x', enable=False)
+            x_min = visible_time[0]
+            x_max = visible_time[-1]
+            # Add small padding to prevent edge clipping
+            padding = (x_max - x_min) * 0.02 if x_max > x_min else 0.1
+            self.view_box.setXRange(x_min - padding, x_max + padding, padding=0)
+
     def _update_legend(self):
-        """Recreate all curves to update legend with correct order"""
-        # Remove all existing curves
+        """Recreate all curves to update legend with correct names/colors"""
+        # Remove all existing curves (this also removes them from legend)
         for curve in self.curves:
             self.plot.removeItem(curve)
 
         # Clear curves list
         self.curves.clear()
 
-        # Recreate all curves in order (0 to 4)
+        # Recreate all curves in order (0 to target_count)
         target_count = max(0, min(self.active_channel_count, len(self.curve_colors)))
         for i in range(target_count):
             current_name = self.channel_names[i] if i < len(self.channel_names) else f"Channel {i + 1}"
             if not current_name:
                 current_name = f"Channel {i + 1}"
 
-            # Create new curve
+            # Create new curve (automatically added to legend)
             curve = self.plot.plot(
                 pen=pg.mkPen(self.curve_colors[i], width=2),
                 name=current_name,
@@ -466,71 +487,52 @@ class PlotterWindow(QWidget):
             return
 
         current_time = time.time() - self.start_time
-        self.time_buffer.append(current_time)
 
-        # Append values to corresponding buffers
-        for i, val in enumerate(values):
-            if i < 5:  # Safety check
-                self.buffers[i].append(val)
+        # Write index where new sample should be stored
+        idx = self._write_index
+        self.time_buffer[idx] = current_time
+        self.channel_valid_mask[:, idx] = False
 
-        # Fill remaining buffers with None if values list is shorter
-        for i in range(len(values), 5):
-            self.buffers[i].append(None)
+        # Store provided channel values
+        for channel_index, val in enumerate(values[:5]):
+            self.channel_buffers[channel_index, idx] = val
+            self.channel_valid_mask[channel_index, idx] = True
+
+        # Advance circular buffer pointers
+        self._write_index = (idx + 1) % self.max_points
+        if self._buffer_size < self.max_points:
+            self._buffer_size += 1
 
         self.packet_count += 1
 
     def update_ui(self):
-        """Update curves and statistics (called by timer)"""
-        if len(self.time_buffer) == 0:
+        """Update curves (called by timer at configured Hz)"""
+        if self._buffer_size == 0:
             return
 
-        # Convert time buffer to list
-        time_array = list(self.time_buffer)
-        total_points = len(time_array)
-
-        # Calculate how many points to display based on percentage
+        visible_count = self._buffer_size
         if self.current_display_percentage < 1.0:
-            # Show only the most recent N% points
-            points_to_show = max(1, int(total_points * self.current_display_percentage))
-            start_idx = total_points - points_to_show
-            visible_time = time_array[start_idx:]
-        else:
-            # Show 100% (all points)
-            start_idx = 0
-            visible_time = time_array
+            visible_count = max(1, int(self._buffer_size * self.current_display_percentage))
 
-        # Update each curve with visible data
-        for i, curve in enumerate(self.curves):
-            # Get data for this channel
-            data = list(self.buffers[i])
+        start_index = (self._write_index - visible_count) % self.max_points
+        indices = (start_index + np.arange(visible_count)) % self.max_points
+        visible_time = self.time_buffer[indices]
 
-            # Extract visible portion
-            if start_idx > 0:
-                visible_data = data[start_idx:]
-            else:
-                visible_data = data
-
-            # Filter out None values
-            filtered_data = [x for x in visible_data if x is not None]
-            filtered_time = visible_time[-len(filtered_data):] if filtered_data else []
-
-            if filtered_data:
-                curve.setData(filtered_time, filtered_data)
-            else:
+        # Update each curve with visible data using masks to skip missing samples
+        for channel_index, curve in enumerate(self.curves):
+            mask = self.channel_valid_mask[channel_index, indices]
+            if not np.any(mask):
                 curve.setData([], [])
+                continue
 
-        # Set X-axis range to show visible data
-        if len(visible_time) > 0:
-            view_box = self.plot.getViewBox()
-            view_box.enableAutoRange(axis='x', enable=False)
-            x_min = visible_time[0]
-            x_max = visible_time[-1]
-            # Add small padding to prevent edge clipping
-            padding = (x_max - x_min) * 0.02 if x_max > x_min else 0.1
-            view_box.setXRange(x_min - padding, x_max + padding, padding=0)
+            channel_values = self.channel_buffers[channel_index, indices][mask]
+            curve.setData(visible_time[mask], channel_values)
 
-        # Update statistics
-        self._update_stats()
+        # Update X-axis range using cached ViewBox reference
+        self._update_x_range(visible_time)
+
+        # Update statistics roughly once per second
+        self._maybe_update_stats()
 
     def _update_stats(self):
         """Update statistics label (simplified)"""
@@ -544,6 +546,13 @@ class PlotterWindow(QWidget):
         )
         self.stats_label.setText(stats)
 
+    def _maybe_update_stats(self):
+        """Throttle statistics updates to avoid redundant label refreshes"""
+        now = time.time()
+        if now - self._last_stats_update >= 1.0:
+            self._last_stats_update = now
+            self._update_stats()
+
     def showEvent(self, event):
         """Handle window show event - restart timer when window reopens"""
         super().showEvent(event)
@@ -554,7 +563,7 @@ class PlotterWindow(QWidget):
 
     def closeEvent(self, event):
         """Handle window close event"""
-        # Stop timer
+        # Stop timers
         if self.ui_timer:
             self.ui_timer.stop()
 
