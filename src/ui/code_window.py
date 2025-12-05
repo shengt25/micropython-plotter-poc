@@ -548,11 +548,18 @@ class CodeWindow(QMainWindow):
     def on_plot_clicked(self):
         """绘图按钮点击处理"""
         self.auto_open_plot = True
-        if self.plotter_window is None:
-            self.plotter_window = PlotterWindow()
-            self.plotter_window.closed.connect(self._on_plotter_closed)
 
-        # 显示窗口（创建新窗口或恢复最小化的窗口）
+        # 如果窗口已存在，先关闭并销毁
+        if self.plotter_window is not None:
+            self.plotter_window.close()
+            self.plotter_window.deleteLater()
+            self.plotter_window = None
+
+        # 创建新窗口（确保数据重置）
+        self.plotter_window = PlotterWindow()
+        self.plotter_window.closed.connect(self._on_plotter_closed)
+
+        # 显示窗口
         self.plotter_window.show()
         self.plotter_window.raise_()
         self.plotter_window.activateWindow()
