@@ -3,7 +3,7 @@ import sys
 from machine import UART, Pin
 
 
-class _MPPlotter:
+class _SignalPlotter:
     _MAX_PARAMS = 5
     _MAX_NAME_LEN = 16
     _CONFIG_INTERVAL = 10  # send name config every a few packets
@@ -176,4 +176,4 @@ class _MPPlotter:
                 self._debug_led.toggle()
 
 
-plotter = _MPPlotter()
+plotter = _SignalPlotter()
