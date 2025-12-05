@@ -157,9 +157,11 @@ class PlotterWindow(QWidget):
         self.refresh_rates = [10, 20, 30, 60]  # Hz
         self.current_refresh_rate = 30  # Default 30 Hz
 
-        # Display percentage control
-        self.current_display_percentage = 0.50  # Default 50%
-        self.pending_display_percentage = self.current_display_percentage
+        # Zoom control (10 = 1.0x, 15 = 1.5x, 20 = 2.0x, etc.)
+        # Slider uses 10x scale to support 0.1x precision
+        self.current_zoom_level = 10  # Default 1.0x (show all data), slider value
+        self.pending_zoom_level = self.current_zoom_level
+        self.min_visible_points = 100  # Minimum points to display when zoomed in
 
         # UI components (will be created in _setup_ui)
         self.channel_names = self.default_labels.copy()
@@ -168,9 +170,9 @@ class PlotterWindow(QWidget):
         self.stats_text = None
         self.ui_timer = None
         self.view_box = None  # Cached ViewBox reference
-        self.display_slider = None
-        self.display_input = None
-        self.display_change_timer = None
+        self.zoom_slider = None
+        self.zoom_input = None
+        self.zoom_change_timer = None
 
         # Setup UI and timers
         self._setup_ui()
@@ -199,11 +201,11 @@ class PlotterWindow(QWidget):
 
         main_layout.addWidget(splitter)
 
-        # Debounce timer for display percentage updates
-        self.display_change_timer = QTimer(self)
-        self.display_change_timer.setSingleShot(True)
-        self.display_change_timer.setInterval(300)
-        self.display_change_timer.timeout.connect(self._apply_display_percentage)
+        # Debounce timer for zoom level updates
+        self.zoom_change_timer = QTimer(self)
+        self.zoom_change_timer.setSingleShot(True)
+        self.zoom_change_timer.setInterval(300)
+        self.zoom_change_timer.timeout.connect(self._apply_zoom_level)
 
     def _create_plot_area(self):
         """Create the plotting area with pyqtgraph"""
@@ -263,7 +265,7 @@ class PlotterWindow(QWidget):
         layout.addWidget(title_label)
 
         # Color settings button
-        color_button = QPushButton("Color Settings...")
+        color_button = QPushButton("Colors")
         color_button.clicked.connect(self._open_color_settings)
         layout.addWidget(color_button)
 
@@ -279,25 +281,39 @@ class PlotterWindow(QWidget):
 
         layout.addSpacing(20)
 
-        # Display percentage selection
-        layout.addWidget(QLabel("Display Range (%):"))
-        display_container = QWidget()
-        display_layout = QHBoxLayout(display_container)
-        display_layout.setContentsMargins(0, 0, 0, 0)
+        # Zoom control
+        layout.addWidget(QLabel("Zoom:"))
 
-        self.display_slider = QSlider(Qt.Orientation.Horizontal)
-        self.display_slider.setRange(1, 100)
-        self.display_slider.setValue(int(self.current_display_percentage * 100))
-        self.display_slider.valueChanged.connect(self._on_display_slider_changed)
-        display_layout.addWidget(self.display_slider, stretch=1)
+        # Calculate max zoom based on min visible points
+        # If buffer is 5000 points and min is 100, max zoom = 5000/100 = 50x
+        # Slider uses 10x scale: 10 = 1.0x, 500 = 50.0x
+        max_zoom_multiplier = max(1, int(self.max_points / self.min_visible_points))
+        self.max_zoom = max_zoom_multiplier * 10  # Convert to slider scale (e.g., 500 for 50x)
 
-        self.display_input = QLineEdit(str(int(self.current_display_percentage * 100)))
-        self.display_input.setValidator(QIntValidator(1, 100, self))
-        self.display_input.setMaximumWidth(60)
-        self.display_input.editingFinished.connect(self._on_display_input_edited)
-        display_layout.addWidget(self.display_input)
+        # Zoom slider (full width on first row)
+        self.zoom_slider = QSlider(Qt.Orientation.Horizontal)
+        self.zoom_slider.setRange(10, self.max_zoom)  # 1.0x (10) to max (e.g., 50.0x = 500)
+        self.zoom_slider.setValue(self.current_zoom_level)
+        self.zoom_slider.valueChanged.connect(self._on_zoom_slider_changed)
+        layout.addWidget(self.zoom_slider)
 
-        layout.addWidget(display_container)
+        # Zoom input box with "x" label (on second row)
+        zoom_input_container = QWidget()
+        zoom_input_layout = QHBoxLayout(zoom_input_container)
+        zoom_input_layout.setContentsMargins(0, 0, 0, 0)
+
+        # Display as decimal (e.g., "1.0", "2.5", "10.0")
+        self.zoom_input = QLineEdit(f"{self.current_zoom_level / 10:.1f}")
+        self.zoom_input.setMaximumWidth(60)
+        self.zoom_input.editingFinished.connect(self._on_zoom_input_edited)
+        zoom_input_layout.addWidget(self.zoom_input)
+
+        zoom_x_label = QLabel("x")
+        zoom_input_layout.addWidget(zoom_x_label)
+
+        zoom_input_layout.addStretch()  # Push to left
+
+        layout.addWidget(zoom_input_container)
         layout.addSpacing(10)
 
         # Pause/Resume button
@@ -379,53 +395,65 @@ class PlotterWindow(QWidget):
             self.pause_button.setText("Pause")
 
     @Slot(int)
-    def _on_display_slider_changed(self, value):
-        """Handle slider movement for display percentage"""
-        if not self.display_input:
+    def _on_zoom_slider_changed(self, value):
+        """Handle slider movement for zoom level"""
+        if not self.zoom_input:
             return
-        self._update_display_input(value)
-        self._schedule_display_percentage_update(value / 100.0)
+        self._update_zoom_input(value)
+        self._schedule_zoom_update(value)
 
     @Slot()
-    def _on_display_input_edited(self):
-        """Handle manual numeric entry for display percentage"""
-        if not self.display_slider or not self.display_input:
+    def _on_zoom_input_edited(self):
+        """Handle manual numeric entry for zoom level (supports decimals)"""
+        if not self.zoom_slider or not self.zoom_input:
             return
 
-        text = self.display_input.text().strip()
+        text = self.zoom_input.text().strip()
         if not text:
-            value = self.display_slider.value()
+            value = self.zoom_slider.value()
         else:
             try:
-                value = int(text)
+                # Parse as float (e.g., "1.5", "2.0", "10.5")
+                zoom_float = float(text)
+                # Convert to slider scale (multiply by 10)
+                value = int(zoom_float * 10)
             except ValueError:
-                value = self.display_slider.value()
-        value = max(1, min(100, value))
-        if value != self.display_slider.value():
-            self.display_slider.blockSignals(True)
-            self.display_slider.setValue(value)
-            self.display_slider.blockSignals(False)
-        self._update_display_input(value)
-        self._schedule_display_percentage_update(value / 100.0)
+                value = self.zoom_slider.value()
 
-    def _update_display_input(self, value: int):
-        if not self.display_input:
+        # Clamp to valid range (10 = 1.0x, max_zoom = e.g., 500 = 50.0x)
+        value = max(10, min(self.max_zoom, value))
+
+        if value != self.zoom_slider.value():
+            self.zoom_slider.blockSignals(True)
+            self.zoom_slider.setValue(value)
+            self.zoom_slider.blockSignals(False)
+
+        self._update_zoom_input(value)
+        self._schedule_zoom_update(value)
+
+    def _update_zoom_input(self, value: int):
+        """Update zoom input field with new value (display as decimal)"""
+        if not self.zoom_input:
             return
-        current_text = self.display_input.text()
-        new_text = str(value)
+        # Convert slider value to display value (e.g., 10 -> "1.0", 25 -> "2.5")
+        zoom_display = value / 10.0
+        new_text = f"{zoom_display:.1f}"
+        current_text = self.zoom_input.text()
         if current_text == new_text:
             return
-        self.display_input.blockSignals(True)
-        self.display_input.setText(new_text)
-        self.display_input.blockSignals(False)
+        self.zoom_input.blockSignals(True)
+        self.zoom_input.setText(new_text)
+        self.zoom_input.blockSignals(False)
 
-    def _schedule_display_percentage_update(self, ratio: float):
-        self.pending_display_percentage = max(0.01, min(1.0, ratio))
-        if self.display_change_timer:
-            self.display_change_timer.start()
+    def _schedule_zoom_update(self, zoom_level: int):
+        """Schedule zoom level update with debouncing"""
+        self.pending_zoom_level = zoom_level
+        if self.zoom_change_timer:
+            self.zoom_change_timer.start()
 
-    def _apply_display_percentage(self):
-        self.current_display_percentage = self.pending_display_percentage
+    def _apply_zoom_level(self):
+        """Apply pending zoom level (called after debounce timer)"""
+        self.current_zoom_level = self.pending_zoom_level
 
     @Slot()
     def _open_color_settings(self):
@@ -510,9 +538,18 @@ class PlotterWindow(QWidget):
         if self._buffer_size == 0:
             return
 
-        visible_count = self._buffer_size
-        if self.current_display_percentage < 1.0:
-            visible_count = max(1, int(self._buffer_size * self.current_display_percentage))
+        # Calculate visible points based on zoom level
+        # current_zoom_level is slider value: 10 = 1.0x, 15 = 1.5x, 20 = 2.0x, etc.
+        # Convert to actual multiplier
+        zoom_multiplier = self.current_zoom_level / 10.0
+
+        if zoom_multiplier > 1.0:
+            visible_count = max(
+                self.min_visible_points,
+                int(self._buffer_size / zoom_multiplier)
+            )
+        else:
+            visible_count = self._buffer_size  # 1.0x = show all
 
         start_index = (self._write_index - visible_count) % self.max_points
         indices = (start_index + np.arange(visible_count)) % self.max_points
