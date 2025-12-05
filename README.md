@@ -1,4 +1,4 @@
-# MicroPython Plotter: Quick Start Guide
+# MicroPython Plotter
 
 This library helps you visualize data from your MicroPython device instantly. Follow these steps to get started.
 
