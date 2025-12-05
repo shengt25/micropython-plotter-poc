@@ -1,8 +1,8 @@
 {
   "urls": [
     [
-      "lib/singal_plotter.py",
-      "http://localhost:8000/lib/singal_plotter.py"
+      "lib/signal_plotter.py",
+      "http://localhost:8000/lib/signal_plotter.py"
     ]
   ],
   "deps": [],
