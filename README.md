@@ -14,7 +14,7 @@ or:
 
 1. Connect your device to your computer.
 
-2. Open *honny.
+2. Open Thonny.
 
 3. Upload the `mp_plotter.py` file to the **`lib`** folder on your device.
 
