@@ -110,6 +110,96 @@ class ColorSettingsDialog(QDialog):
         return self.bg_color, self.curve_colors
 
 
+class AdvancedSettingsDialog(QDialog):
+    """Dialog for configuring advanced plotter settings"""
+
+    def __init__(self, current_use_fixed, current_rate, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Advanced Settings")
+        self.setModal(True)
+        self.resize(350, 200)
+
+        # Store current values
+        self.use_fixed_timing = current_use_fixed
+        self.sampling_rate_hz = current_rate
+
+        self._setup_ui()
+
+    def _setup_ui(self):
+        """Setup the dialog UI"""
+        layout = QVBoxLayout(self)
+
+        # Timing mode section
+        timing_label = QLabel("Timing Mode:")
+        layout.addWidget(timing_label)
+
+        # Checkbox for fixed timing
+        self.fixed_timing_checkbox = QPushButton()
+        self.fixed_timing_checkbox.setCheckable(True)
+        self.fixed_timing_checkbox.setChecked(self.use_fixed_timing)
+        self.fixed_timing_checkbox.setText("Use Fixed Sampling Rate")
+        self.fixed_timing_checkbox.toggled.connect(self._on_checkbox_toggled)
+        layout.addWidget(self.fixed_timing_checkbox)
+
+        # Hint label
+        hint_label = QLabel("(for smooth visualization)")
+        hint_label.setStyleSheet("color: #888888; font-size: 10px;")
+        layout.addWidget(hint_label)
+
+        layout.addSpacing(10)
+
+        # Sampling rate input
+        rate_container = QWidget()
+        rate_layout = QHBoxLayout(rate_container)
+        rate_layout.setContentsMargins(0, 0, 0, 0)
+
+        rate_layout.addWidget(QLabel("Sampling Rate:"))
+
+        self.rate_input = QLineEdit(f"{self.sampling_rate_hz:.1f}")
+        self.rate_input.setMaximumWidth(80)
+        self.rate_input.setValidator(QIntValidator(1, 10000))
+        self.rate_input.setEnabled(self.use_fixed_timing)
+        rate_layout.addWidget(self.rate_input)
+
+        rate_layout.addWidget(QLabel("Hz"))
+        rate_layout.addStretch()
+
+        layout.addWidget(rate_container)
+
+        layout.addSpacing(20)
+
+        # OK/Cancel buttons
+        button_box = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        button_box.accepted.connect(self._on_accepted)
+        button_box.rejected.connect(self.reject)
+        layout.addWidget(button_box)
+
+    def _on_checkbox_toggled(self, checked):
+        """Handle checkbox toggle"""
+        self.rate_input.setEnabled(checked)
+
+    def _on_accepted(self):
+        """Handle OK button - validate and accept"""
+        self.use_fixed_timing = self.fixed_timing_checkbox.isChecked()
+
+        if self.use_fixed_timing:
+            text = self.rate_input.text().strip()
+            try:
+                rate = float(text)
+                if rate > 0:
+                    self.sampling_rate_hz = rate
+            except ValueError:
+                pass  # Keep previous value if invalid
+
+        self.accept()
+
+    def get_settings(self):
+        """Return (use_fixed_timing: bool, sampling_rate_hz: float)"""
+        return self.use_fixed_timing, self.sampling_rate_hz
+
+
 class PlotterWindow(QWidget):
     """
     Real-time plotter window for displaying multi-channel data.
@@ -164,6 +254,12 @@ class PlotterWindow(QWidget):
         self.pending_zoom_level = self.current_zoom_level
         self.max_zoom_multiplier = 50  # Maximum zoom multiplier (50x)
         self.min_visible_points = 100  # Minimum points to display when zoomed in
+
+        # Sampling rate configuration for fixed timing mode
+        self.use_fixed_timing = True  # Default: enabled
+        self.sampling_rate_hz = 250.0  # Default 250 Hz
+        self.time_interval = 1.0 / 250.0  # 0.004 seconds
+        self.synthetic_time = 0.0  # Cumulative synthetic time
 
         # UI components (will be created in _setup_ui)
         self.channel_names = self.default_labels.copy()
@@ -270,6 +366,11 @@ class PlotterWindow(QWidget):
         color_button = QPushButton("Colors")
         color_button.clicked.connect(self._open_color_settings)
         layout.addWidget(color_button)
+
+        # Advanced settings button
+        advanced_button = QPushButton("Advanced")
+        advanced_button.clicked.connect(self._open_advanced_settings)
+        layout.addWidget(advanced_button)
 
         layout.addSpacing(20)
 
@@ -507,6 +608,30 @@ class PlotterWindow(QWidget):
         # Recreate all curves with new colors
         self._update_legend()
 
+    @Slot()
+    def _open_advanced_settings(self):
+        """Open the advanced settings dialog"""
+        dialog = AdvancedSettingsDialog(
+            self.use_fixed_timing,
+            self.sampling_rate_hz,
+            parent=self
+        )
+
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            use_fixed, rate = dialog.get_settings()
+            self._apply_timing_settings(use_fixed, rate)
+
+    def _apply_timing_settings(self, use_fixed: bool, rate: float):
+        """Apply timing settings from advanced dialog"""
+        self.use_fixed_timing = use_fixed
+
+        if use_fixed and rate > 0:
+            self.sampling_rate_hz = rate
+            self.time_interval = 1.0 / rate
+
+        # Reset synthetic time when settings change
+        self.synthetic_time = 0.0
+
     @Slot(list)
     def on_plot_config_received(self, names: list):
         """Update channel names from device configuration packets"""
@@ -539,7 +664,14 @@ class PlotterWindow(QWidget):
         if self.is_paused:
             return
 
-        current_time = time.time() - self.start_time
+        # Calculate time based on mode
+        if self.use_fixed_timing and self.sampling_rate_hz > 0:
+            # Use synthetic time for smooth visualization
+            self.synthetic_time += self.time_interval
+            current_time = self.synthetic_time
+        else:
+            # Use arrival time (original behavior)
+            current_time = time.time() - self.start_time
 
         # Write index where new sample should be stored
         idx = self._write_index
@@ -617,6 +749,10 @@ class PlotterWindow(QWidget):
     def showEvent(self, event):
         """Handle window show event - restart timer when window reopens"""
         super().showEvent(event)
+
+        # Reset timing state
+        self.start_time = time.time()
+        self.synthetic_time = 0.0  # Reset synthetic time counter
 
         # Restart timer if it was stopped
         if self.ui_timer and not self.ui_timer.isActive():
