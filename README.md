@@ -2,6 +2,10 @@
 
 This library helps you visualize data from your MicroPython device instantly. Follow these steps to get started.
 
+Now it is only a proof of concept, there's a lot of room of improvements.  
+
+It won't break your MicroPython device, **but always backup the important data in you MicroPython device when using this tool.**
+
 ## Installation
 
 Before coding, you need to install the library for plotting on your device. There are three ways to do it:
