@@ -54,10 +54,24 @@ class DeviceSaveDialog(QDialog):
         self.tree.itemExpanded.connect(self._on_item_expanded)
         self.tree.currentItemChanged.connect(self._on_current_item_changed)
 
-        # Root mapping (not shown as a row)
-        self._path_to_item['/'] = self.tree.invisibleRootItem()
+        # Create visible root node
+        root_item = QTreeWidgetItem(self.tree, ['/'])
+        root_item.setData(0, self.ROLE_PATH, '/')
+        root_item.setData(0, self.ROLE_IS_DIR, True)
+        root_item.setData(0, self.ROLE_LOADED, False)
+        root_item.setChildIndicatorPolicy(QTreeWidgetItem.ChildIndicatorPolicy.ShowIndicator)
+        self._path_to_item['/'] = root_item
+
+        # Populate and expand root by default
         self._populate_children('/')
-        self._maybe_select_desired_directory()
+        root_item.setExpanded(True)
+
+        # Select root by default if no specific directory requested
+        if not self._desired_directory or self._desired_directory == '/':
+            self.tree.setCurrentItem(root_item)
+            self._selected_directory = '/'
+        else:
+            self._maybe_select_desired_directory()
 
         layout.addWidget(QLabel("File name:"))
         self.filename_edit = QLineEdit()
@@ -174,6 +188,10 @@ class DeviceSaveDialog(QDialog):
 
         normalized = self._desired_directory
         if normalized == '/':
+            # Select the visible root item
+            root_item = self._path_to_item.get('/')
+            if root_item:
+                self.tree.setCurrentItem(root_item)
             self._selected_directory = '/'
             self._desired_directory = ''
             return

@@ -76,7 +76,9 @@ class FileBrowser(QWidget):
             items: [(name, is_dir), ...]
         """
         if path == self._root_path:
-            self._populate_children(self.tree.invisibleRootItem(), items, path)
+            root_item = self.tree.invisibleRootItem()
+            self._clear_children(root_item)
+            self._populate_children(root_item, items, path)
             return
 
         parent = self._path_to_item.get(path)
@@ -187,8 +189,9 @@ class FileBrowser(QWidget):
             self.delete_requested.emit(path, is_dir)
 
     def _request_directory(self, path: str):
-        if path in self._loading_paths:
-            return
+        # Force refresh by removing and re-adding path
+        # This ensures refresh happens even for already-loaded directories
+        self._loading_paths.discard(path)
         self._loading_paths.add(path)
         self.dir_expand_requested.emit(path)
 
