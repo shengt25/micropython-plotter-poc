@@ -86,6 +86,11 @@ class CodeWindow(QMainWindow):
         self.setStatusBar(self.status_bar)
         self.status_bar.showMessage("Initializing...")
 
+        # 初始状态：未连接，禁用需要连接的按钮
+        self.toolbar.run_action.setEnabled(False)
+        self.toolbar.stop_action.setEnabled(False)
+        self.toolbar.disconnect_action.setEnabled(False)
+
     def _setup_port_monitor(self):
         self.port_monitor = QTimer(self)
         self.port_monitor.setInterval(1500)
@@ -128,6 +133,7 @@ class CodeWindow(QMainWindow):
         self.toolbar.run_clicked.connect(self.on_run_code)
         self.toolbar.stop_clicked.connect(self.on_stop_code)
         self.toolbar.save_clicked.connect(self.on_save_file)
+        self.toolbar.disconnect_clicked.connect(self.on_disconnect_clicked)
 
         # Worker 初始化完成 -> 自动连接设备
         self.worker.initialized.connect(self._connect_device)
@@ -144,6 +150,7 @@ class CodeWindow(QMainWindow):
         self.worker.connect_finished.connect(self.on_connect_finished)
         self.worker.run_finished.connect(self.on_run_finished)
         self.worker.stop_finished.connect(self.on_stop_finished)
+        self.worker.disconnect_finished.connect(self.on_disconnect_finished)
 
         # 文件浏览器 -> Worker
         self.file_browser.dir_expand_requested.connect(self.worker.list_dir_requested.emit)
@@ -249,10 +256,14 @@ class CodeWindow(QMainWindow):
         self.worker.disconnect_requested.emit()
         self.current_port = None
         self._connect_when_ready = False
+
+        # 更新 UI 状态
+        self._update_ui_for_disconnected_state()
+
         ports = [(info.device, format_label(info)) for info in port_infos]
         self.toolbar.set_ports(ports, None)
         self.toolbar.show_disconnected_placeholder()
-        self.status_bar.showMessage("disconnected")
+        self.status_bar.showMessage("Device disconnected")
 
     def on_port_selected(self, port: str):
         if port == self.current_port:
@@ -306,8 +317,16 @@ class CodeWindow(QMainWindow):
         """连接完成处理"""
         if success:
             self.file_browser.initialize_root()
+            # 连接成功后启用断开按钮和操作按钮
+            self.toolbar.disconnect_action.setEnabled(True)
+            self.toolbar.run_action.setEnabled(True)
+            self.toolbar.stop_action.setEnabled(True)
         else:
             self.file_browser.show_error("Connecting to device failed")
+            # 连接失败，禁用所有需要连接的按钮
+            self.toolbar.disconnect_action.setEnabled(False)
+            self.toolbar.run_action.setEnabled(False)
+            self.toolbar.stop_action.setEnabled(False)
 
     def on_run_finished(self, success):
         """运行完成处理"""
@@ -426,6 +445,47 @@ class CodeWindow(QMainWindow):
         # 触发 Worker 写入文件（等待异步完成信号后才标记为已保存）
         self.output_console.append_info(f"[File] Saving: {path}")
         self.worker.write_file_requested.emit(path, content)
+
+    def on_disconnect_clicked(self):
+        """断开连接按钮处理"""
+        # 禁用断开按钮，防止重复点击
+        self.toolbar.disconnect_action.setEnabled(False)
+
+        # 输出提示信息
+        self.output_console.append_info("[System] Requesting disconnect...")
+
+        # 触发 Worker 断开连接（异步执行）
+        self.worker.disconnect_requested.emit()
+
+    def on_disconnect_finished(self):
+        """断开连接完成处理"""
+        # 更新 UI 状态
+        self._update_ui_for_disconnected_state()
+
+        # 更新下拉菜单显示 "Disconnected"
+        self.toolbar.show_disconnected_placeholder()
+
+        # 更新状态栏
+        self.status_bar.showMessage("Disconnected")
+
+        # 清空 current_port（表示用户主动断开）
+        self.current_port = None
+
+    def _update_ui_for_disconnected_state(self):
+        """断开连接后更新 UI 状态"""
+        # 1. 禁用需要连接的按钮
+        self.toolbar.run_action.setEnabled(False)
+        self.toolbar.stop_action.setEnabled(False)
+        self.toolbar.disconnect_action.setEnabled(False)
+
+        # 2. 清空文件浏览器
+        self.file_browser.show_error("Device not connected")
+
+        # 3. 关闭绘图窗口（如果打开）
+        if self.plotter_window:
+            self.plotter_window.close()
+            self.plotter_window.deleteLater()
+            self.plotter_window = None
 
     def on_write_file_finished(self, success: bool, path: str):
         """文件写入完成处理"""

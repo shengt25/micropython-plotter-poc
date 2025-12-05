@@ -21,6 +21,7 @@ class CodeToolBar(QToolBar):
     plot_clicked = Signal()
     port_refresh_requested = Signal()
     port_selected = Signal(str)
+    disconnect_clicked = Signal()
 
     def __init__(self, parent=None):
         super().__init__("Code Control", parent)
@@ -35,15 +36,19 @@ class CodeToolBar(QToolBar):
         self.port_combo.setMinimumWidth(200)
         self.port_combo.currentIndexChanged.connect(self._on_port_changed)
         self.port_combo.popup_about_to_show.connect(self.port_refresh_requested.emit)
+        self.disconnect_action = QAction("Disconnect", self)
 
         self.new_action.triggered.connect(self.new_clicked.emit)
         self.run_action.triggered.connect(self.run_clicked.emit)
         self.stop_action.triggered.connect(self.stop_clicked.emit)
         self.save_action.triggered.connect(self.save_clicked.emit)
         self.plot_action.triggered.connect(self.plot_clicked.emit)
+        self.disconnect_action.triggered.connect(self.disconnect_clicked.emit)
 
         # 保存按钮默认禁用（只有打开文件并修改后才启用）
         self.save_action.setEnabled(False)
+        # Disconnect 按钮初始禁用（连接成功后才启用）
+        self.disconnect_action.setEnabled(False)
 
         self.addAction(self.new_action)
         self.addAction(self.save_action)
@@ -54,6 +59,7 @@ class CodeToolBar(QToolBar):
         self.addAction(self.plot_action)
         self.addSeparator()
         self.addWidget(self.port_combo)
+        self.addAction(self.disconnect_action)
 
         self.setMovable(False)
 

@@ -108,9 +108,19 @@ class DeviceWorker(QObject):
 
     @Slot()
     def do_disconnect(self):
-        """断开设备"""
+        """断开设备（用户主动断开）"""
         self.progress.emit("[System] Disconnecting from device...")
+        self.status_changed.emit("Disconnecting...")
+
+        # 停止后台监控定时器（如果正在运行）
+        if self.monitor_timer and self.monitor_timer.isActive():
+            self.monitor_timer.stop()
+
+        # 断开连接
         self.device_manager.disconnect()
+
+        self.progress.emit("[System] Disconnected")
+        self.status_changed.emit("Disconnected")
         self.disconnect_finished.emit()
 
     @Slot(str)
