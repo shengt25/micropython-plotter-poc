@@ -16,59 +16,69 @@ or:
 
 2. Open Thonny.
 
-3. Upload the `mp_plotter.py` file to the **`lib`** folder on your device.
+3. Upload the `signal_plotter.py` file to the **`lib`** folder on your device.
 
 
 
 ### How to Use in Code
 
-Using the plotter is very easy. 
+Using the plotter is very easy.
 
 1. Import the library in the file you want to use
 
    ```python
-   from mp_plotter import plotter
+   from signal_plotter import plotter
    ```
 
-2. Call `plotter.plot()` to plot. It should be called at only one place, otherwise the computer side will confuse about the data. Of course it can be in the loop, but only at one place. 
+2. Call `plotter.plot('name', value, ...)` with named variables
 
-   A correct example:
+   **Important:**
+   - Use the format: `plotter.plot('name1', value1, 'name2', value2, ...)`
+   - Maximum 5 variables allowed
+   - Variable names must be strings
+   - Values must be int or float
+
+   **Correct example:**
 
    ```python
    import time
-   from mp_plotter import plotter
-   
-   value1 = 0
-   value2 = 0
-   plotter.plot(value1, value2)
-   
-   for i in range (10000):
-   	plotter.plot(i, 2i, 3i)
-     time.sleep(0.05)
-   ```
+   from signal_plotter import plotter
 
-   But not:
-
-   ```python
-   from mp_plotter import plotter
-   
-   value1 = 0
-   value2 = 0
-   plotter.plot(value1, value2)
-   
    for i in range(10000):
-     plotter.plot(i, 2i, 3i)
-   	for j in range(100):
-     	plotter.plot(j)	# two plotter calls, which will mess up the data sent to computer
-   		time.sleep(0.05)
+       plotter.plot('x', i, 'y', 2*i, 'z', 3*i)
+       time.sleep(0.05)
    ```
 
+   **Incorrect examples:**
+
+   **❌ Missing names:**
+   ```python
+   from signal_plotter import plotter
+
+   # ERROR: Arguments must be name-value pairs
+   plotter.plot(100, 200, 300)
+   ```
    
+   **❌ Multiple plot locations:**
+   ```python
+   from signal_plotter import plotter
+
+   for i in range(10000):
+       plotter.plot('x', i, 'y', 2*i)
+       for j in range(100):
+           plotter.plot('x', j)  # Multiple calls will confuse the receiver
+           time.sleep(0.05)
+   ```
+
+
 
 ### Notes
 
-- **Data Types:** You can plot integers (`int`) or decimals (`float`). Note that `float` values are automatically converted to integers before sending. In the future more type will be supported.
-- **Limit:** You can plot a maximum of 5 variables at the same time.
+- **Named Variables:** You must provide name-value pairs: `plotter.plot('name1', val1, 'name2', val2, ...)`
+- **Variable Names:** Must be strings, cannot be empty.
+- **Data Types:** Values can be integers (`int`) or decimals (`float`). Note that `float` values are automatically converted to integers before sending.
+- **Limit:** You can plot a maximum of 5 variables at the same time (10 arguments total).
+- **Single Location:** Call `plotter.plot()` at only one place in your code (can be inside a loop).
 - **Visualizing:** Open the micropython-plotter software to see your graphs in real-time using `Plot` tool.
 
 - **On macOS**: You might receive a warning about the application and can't open it, open the `terminal` and run `xattr -d com.apple.quarantine <path-to-micropython-plotter>`, change the path to your actual path and name such as `micropython-plotter_macos_arm64.app`
