@@ -3,12 +3,12 @@ from PySide6.QtCore import QObject
 import binascii
 
 class FileManager(QObject):
-    """MicroPython 文件系统操作辅助类"""
+    """MicroPython file system operation helper class"""
 
     @staticmethod
     def generate_list_dir_code(path: str) -> str:
-        """生成列出目录的 MicroPython 代码"""
-        # 转义路径中的特殊字符
+        """Generate MicroPython code to list directory"""
+        # Escape special characters in path
         escaped_path = path.replace("'", "\\'")
 
         code = f"""
@@ -34,7 +34,7 @@ except Exception as e:
     @staticmethod
     def parse_list_dir_result(raw_output: str) -> Tuple[bool, List[Tuple[str, bool]]]:
         """
-        解析列出目录的结果
+        Parse directory listing result
 
         Returns:
             (success, [(name, is_dir), ...])
@@ -59,7 +59,7 @@ except Exception as e:
 
     @staticmethod
     def generate_read_file_code(path: str) -> str:
-        """生成读取文件的 MicroPython 代码"""
+        """Generate MicroPython code to read file"""
         escaped_path = path.replace("'", "\\'")
 
         code = f"""import sys, binascii
@@ -87,23 +87,23 @@ except Exception as e:
     @staticmethod
     def parse_read_file_result(raw_output: str) -> Tuple[bool, Union[bytes, str]]:
         """
-        解析读取文件的结果 (支持 Hex 还原)
+        Parse file read result (supports Hex restoration)
 
         Returns:
             (success, content_bytes)
-            注意：成功时返回的是 bytes 类型数据，不是 str
+            Note: Success returns bytes data, not str
         """
-        # 1. 检查错误标记 (对应上一段代码中的 '<<<ERROR>>>')
+        # 1. Check error marker (corresponding to '<<<ERROR>>>' in previous code)
         if '<<<ERROR>>>' in raw_output:
-            # 你可以选择提取具体的错误信息
+            # Optionally extract specific error message
             # error_msg = raw_output.split('<<<ERROR>>>')[1]
             return (False, b"Device Error")
 
-        # 兼容旧代码的错误标记 (以防万一)
+        # Backward compatibility for old code (just in case)
         if 'ERROR:' in raw_output and '<<<FILE_START>>>' not in raw_output:
             return (False, b"Device Error")
 
-        # 2. 查找标记
+        # 2. Find markers
         start_marker = '<<<FILE_START>>>'
         end_marker = '<<<FILE_END>>>'
 
@@ -113,25 +113,25 @@ except Exception as e:
         if start_idx == -1 or end_idx == -1:
             return (False, b"Markers not found")
 
-        # 3. 提取 Hex 字符串
-        # 提取中间的内容，并使用 strip() 去除可能存在的首尾换行符或空白
+        # 3. Extract Hex string
+        # Extract content between markers and strip whitespace
         hex_content = raw_output[start_idx + len(start_marker):end_idx].strip()
 
-        # 4. 核心步骤：Hex -> Bytes 还原
+        # 4. Core step: Hex -> Bytes restoration
         try:
-            # 将十六进制字符串 (如 "616263") 转换回二进制 (如 b"abc")
+            # Convert hex string (e.g., "616263") back to binary (e.g., b"abc")
             content_bytes = binascii.unhexlify(hex_content)
             return (True, content_bytes)
         except binascii.Error:
-            # 如果 Hex 格式不对（比如传输丢失了字符），这里会报错
+            # Incorrect Hex format (e.g. chars missing during transmission)
             return (False, b"Hex Decode Error")
 
     @staticmethod
     def generate_write_file_code(path: str, content: str) -> str:
-        """生成写入文件的 MicroPython 代码（使用 Hex 编码传输）"""
+        """Generate MicroPython code to write file (use Hex encoding for transmission)"""
         escaped_path = path.replace("'", "\\'")
 
-        # 将内容编码为 hex 字符串进行传输
+        # Encode (content) as hex string for transmission
         content_bytes = content.encode('utf-8')
         hex_content = binascii.hexlify(content_bytes).decode('ascii')
 
@@ -152,7 +152,7 @@ except Exception as e:
     @staticmethod
     def parse_write_file_result(raw_output: str) -> bool:
         """
-        解析写入文件的结果
+        Parse file write result
 
         Returns:
             success
@@ -161,7 +161,7 @@ except Exception as e:
 
     @staticmethod
     def generate_delete_path_code(path: str) -> str:
-        """生成删除文件/文件夹的 MicroPython 代码"""
+        """Generate MicroPython code to delete file/folder"""
         escaped_path = path.replace("'", "\\'")
 
         code = f"""import sys, os
@@ -191,5 +191,5 @@ except Exception as e:
 
     @staticmethod
     def parse_delete_path_result(raw_output: str) -> bool:
-        """解析删除结果"""
+        """Parse delete result"""
         return '<<<SUCCESS>>>' in raw_output and '<<<ERROR>>>' not in raw_output

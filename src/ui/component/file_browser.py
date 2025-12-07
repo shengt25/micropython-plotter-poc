@@ -6,14 +6,14 @@ from PySide6.QtCore import Signal, Qt
 
 
 class FileBrowser(QWidget):
-    """MicroPython 文件浏览器"""
+    """MicroPython File Browser"""
 
     # Signals
-    dir_expand_requested = Signal(str)  # 请求展开目录
-    file_selected = Signal(str)         # 文件被选中（可选）
-    file_open_requested = Signal(str)   # 请求打开文件（双击文件）
-    directory_loaded = Signal(str, list)  # 某个目录加载完成
-    delete_requested = Signal(str, bool)  # 请求删除路径
+    dir_expand_requested = Signal(str)  # Request to expand directory
+    file_selected = Signal(str)         # File selected (optional)
+    file_open_requested = Signal(str)   # Request to open file (double click)
+    directory_loaded = Signal(str, list)  # Directory loaded
+    delete_requested = Signal(str, bool)  # Request to delete path
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -21,12 +21,12 @@ class FileBrowser(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        # 标题
+        # Title
         title = QLabel("Files")
         title.setStyleSheet("font-weight: bold; padding: 5px;")
         layout.addWidget(title)
 
-        # 树形控件
+        # Tree widget
         self.tree = QTreeWidget()
         self.tree.setHeaderLabel("File Browser")
         self.tree.itemExpanded.connect(self._on_item_expanded)
@@ -36,13 +36,13 @@ class FileBrowser(QWidget):
         self.tree.customContextMenuRequested.connect(self._on_context_menu_requested)
         layout.addWidget(self.tree)
 
-        # 占位文本
+        # Placeholder text
         self.placeholder = QLabel("Device not connected")
         self.placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.placeholder.setStyleSheet("color: #888; padding: 20px;")
         layout.addWidget(self.placeholder)
 
-        # 默认显示占位符
+        # Show placeholder by default
         self.tree.hide()
         self.placeholder.show()
         self._root_path = "/"
@@ -50,7 +50,7 @@ class FileBrowser(QWidget):
         self._loading_paths = set()
 
     def initialize_root(self):
-        """初始化根目录（设备连接后调用）"""
+        """Initialize root directory (called after device connection)"""
         self.tree.clear()
         self.placeholder.hide()
         self.tree.show()
@@ -59,7 +59,7 @@ class FileBrowser(QWidget):
         self._request_directory(self._root_path)
 
     def show_error(self, message: str):
-        """显示错误"""
+        """Show error"""
         self._loading_paths.clear()
         self._path_to_item.clear()
         self.tree.clear()
@@ -69,10 +69,10 @@ class FileBrowser(QWidget):
 
     def populate_directory(self, path: str, items: list):
         """
-        填充目录内容
+        Populate directory content
 
         Args:
-            path: 目录路径
+            path: Directory path
             items: [(name, is_dir), ...]
         """
         if path == self._root_path:
@@ -91,7 +91,7 @@ class FileBrowser(QWidget):
         self.directory_loaded.emit(path, items)
 
     def remove_entry(self, path: str):
-        """从树中移除指定路径"""
+        """Remove specified path from tree"""
         item = self._path_to_item.pop(path, None)
         if not item:
             return
@@ -102,7 +102,7 @@ class FileBrowser(QWidget):
         self._remove_subtree(item)
 
     def _populate_children(self, parent: QTreeWidgetItem, items: list, path: str):
-        """为指定父节点填充子节点"""
+        """Populate children for specified parent node"""
         for name, is_dir in items:
             full_path = f"{path}/{name}" if path != "/" else f"/{name}"
             child = QTreeWidgetItem(parent, [name])
@@ -115,7 +115,7 @@ class FileBrowser(QWidget):
                 placeholder.setDisabled(True)
 
     def _find_item_by_path(self, path: str):
-        """根据路径查找节点"""
+        """Find item by path"""
         if path == self._root_path:
             return self.tree.invisibleRootItem()
         iterator = QTreeWidgetItemIterator(self.tree)
@@ -127,19 +127,19 @@ class FileBrowser(QWidget):
         return None
 
     def _on_item_expanded(self, item: QTreeWidgetItem):
-        """节点展开事件"""
+        """Item expansion event"""
         path = item.data(0, Qt.ItemDataRole.UserRole)
         is_dir = item.data(0, Qt.ItemDataRole.UserRole + 1)
 
         if not path or not is_dir:
             return
 
-        # 检查是否已加载（子节点是占位符）
+        # Check if loaded (child is placeholder)
         if item.childCount() > 0 and item.child(0).isDisabled():
             self._request_directory(path)
 
     def _on_item_double_clicked(self, item: QTreeWidgetItem, column: int):
-        """节点双击事件"""
+        """Item double click event"""
         path = item.data(0, Qt.ItemDataRole.UserRole)
         is_dir = item.data(0, Qt.ItemDataRole.UserRole + 1)
 
@@ -156,7 +156,7 @@ class FileBrowser(QWidget):
         self.file_open_requested.emit(path)
 
     def _on_context_menu_requested(self, position):
-        """右键菜单"""
+        """Context menu"""
         item = self.tree.itemAt(position)
         if not item:
             return
@@ -210,15 +210,15 @@ class FileBrowser(QWidget):
         del item
 
     def request_directory(self, path: str):
-        """对外暴露的加载目录接口"""
+        """Public interface to load directory"""
         self._request_directory(path)
 
     def cancel_directory_request(self, path: str):
-        """外部通知目录加载失败，恢复请求状态"""
+        """External notification of directory load failure, restore request state"""
         self._loading_paths.discard(path)
 
     def get_directory_entries(self, path: str):
-        """获取指定目录的子项（如果已加载）"""
+        """Get children of specified directory (if loaded)"""
         if path == self._root_path:
             parent = self.tree.invisibleRootItem()
         else:
@@ -244,7 +244,7 @@ class FileBrowser(QWidget):
         return entries
 
     def get_known_directories(self) -> list[str]:
-        """返回当前已知的设备目录列表"""
+        """Return list of currently known device directories"""
         directories = {'/'}
         iterator = QTreeWidgetItemIterator(self.tree)
         while iterator.value():
@@ -257,7 +257,7 @@ class FileBrowser(QWidget):
         return sorted(directories)
 
     def get_selected_directory(self) -> str:
-        """返回当前选中的目录，如果选中的是文件则返回其父目录"""
+        """Return currently selected directory, or parent directory if file is selected"""
         item = self.tree.currentItem()
         while item:
             path = item.data(0, Qt.ItemDataRole.UserRole)

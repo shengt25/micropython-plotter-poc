@@ -48,11 +48,11 @@ class CodeToolBar(QToolBar):
         self.disconnect_action.triggered.connect(self.disconnect_clicked.emit)
         self.install_plot_lib_action.triggered.connect(self.install_plot_lib_clicked.emit)
 
-        # 保存按钮默认禁用（只有打开文件并修改后才启用）
+        # Save button disabled by default (enabled only when file is open and modified)
         self.save_action.setEnabled(False)
-        # Disconnect 按钮初始禁用（连接成功后才启用）
+        # Disconnect button initially disabled (enabled after connection)
         self.disconnect_action.setEnabled(False)
-        # Install Plot Lib 按钮初始禁用（连接成功后才启用）
+        # Install Plot Lib button initially disabled (enabled after connection)
         self.install_plot_lib_action.setEnabled(False)
 
         self.addAction(self.new_action)

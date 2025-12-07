@@ -8,8 +8,8 @@ from utils.logger import setup_logger
 
 class DeviceManager(QObject):
     """
-    管理 MicroPython 设备的连接
-    提供共享的 Serial 实例给其他模块使用
+    Manage MicroPython device connection
+    Provide shared Serial instance for other modules
     """
 
     def __init__(self, port: str, baudrate: int = 115200):
@@ -21,9 +21,9 @@ class DeviceManager(QObject):
         self._default_read_timeout = 1.0
 
     def connect(self) -> bool:
-        """连接设备并进入 Raw REPL 模式"""
+        """Connect to device and enter Raw REPL"""
         with self.lock:
-            # 如果已连接，先断开
+            # If already connected, disconnect first
             if self.serial and self.serial.is_open:
                 try:
                     self.serial.close()
@@ -39,7 +39,7 @@ class DeviceManager(QObject):
                     write_timeout=1
                 )
 
-                # 进入 Raw REPL
+                # Enter Raw REPL
                 if self._enter_raw_mode():
                     return True
                 else:
@@ -48,19 +48,19 @@ class DeviceManager(QObject):
                     return False
 
             except Exception as e:
-                print(f"连接失败: {e}")
+                print(f"Connection failed: {e}")
                 self.serial = None
                 return False
 
     def disconnect(self):
-        """断开连接"""
+        """Disconnect"""
         with self.lock:
             if self.serial and self.serial.is_open:
                 try:
-                    # 尝试优雅退出 Raw REPL
-                    self.serial.write(b'\x02')  # Ctrl+B 退出 Raw REPL
+                    # Try to exit Raw REPL gracefully
+                    self.serial.write(b'\x02')  # Ctrl+B Exit Raw REPL
                 except Exception:
-                    # 串口可能已经出错了，忽略
+                    # Serial port might be broken, ignore
                     pass
                 finally:
                     self.serial.close()
@@ -68,88 +68,88 @@ class DeviceManager(QObject):
             self.serial = None
 
     def _enter_raw_mode(self) -> bool:
-        """进入 Raw REPL 模式（带重试）"""
-        # 尝试多次进入 Raw REPL（参考 Thonny 的做法）
+        """Enter Raw REPL mode (with retry)"""
+        # Try multiple times to enter Raw REPL (refer to Thonny's approach)
         for attempt in range(3):
             try:
-                # 1. 发送 Ctrl+C 多次，尝试停止任何运行的程序
+                # 1. Send Ctrl+C multiple times, try to stop any running program
                 for _ in range(3):
                     self.serial.write(b'\x03')
                     time.sleep(0.05)
 
-                # 2. 清空缓冲区
+                # 2. Clear buffer
                 self.serial.reset_input_buffer()
                 time.sleep(0.1)
 
-                # 3. 进入 Raw REPL
+                # 3. Enter Raw REPL
                 self.serial.write(b'\x01')
 
-                # 4. 等待确认消息（超时 2 秒）
+                # 4. Wait for confirmation (timeout 2s)
                 response = self.serial.read_until(b'raw REPL; CTRL-B to exit\r\n')
 
                 if b'raw REPL' in response:
-                    # 读取提示符 '>'
+                    # Read prompt '>'
                     self.serial.read_until(b'>')
                     if attempt > 0:
-                        print(f"[DeviceManager] 第 {attempt + 1} 次尝试成功进入 Raw REPL")
+                        print(f"[DeviceManager] Successfully entered Raw REPL on attempt {attempt + 1}")
                     return True
                 else:
-                    print(f"[DeviceManager] 进入 Raw REPL 失败（尝试 {attempt + 1}/3），收到: {response}")
+                    print(f"[DeviceManager] Failed to enter Raw REPL (Attempt {attempt + 1}/3), received: {response}")
 
             except Exception as e:
-                print(f"[DeviceManager] 进入 Raw REPL 异常（尝试 {attempt + 1}/3）: {e}")
+                print(f"[DeviceManager] Exception entering Raw REPL (Attempt {attempt + 1}/3): {e}")
 
-            # 如果不是最后一次尝试，等待后重试
+            # If not the last attempt, wait and retry
             if attempt < 2:
                 time.sleep(0.5)
 
-        # 所有尝试都失败
-        print("[DeviceManager] 无法进入 Raw REPL，设备可能无响应，请手动重启设备")
+        # All attempts failed
+        print("[DeviceManager] Unable to enter Raw REPL, device may be unresponsive, please restart manually")
         return False
 
     def force_stop(self) -> bool:
         """
-        发送 Ctrl+C 并重新进入 Raw REPL
-        用于停止当前运行的程序或清理设备状态
+        Send Ctrl+C and re-enter Raw REPL
+        Used to stop current running program or cleanup device state
 
         Returns:
-            是否成功
+            Success or not
         """
         with self.lock:
             if not self.serial or not self.serial.is_open:
                 return False
 
             try:
-                # 发送 Ctrl+C 停止程序
+                # Send Ctrl+C to stop program
                 self.serial.write(b'\x03\x03')
                 time.sleep(0.1)
 
-                # 清空缓冲区
+                # Clear buffer
                 self.serial.read_all()
 
-                # 重新进入 Raw REPL
+                # Re-enter Raw REPL
                 return self._enter_raw_mode()
 
             except Exception as e:
-                print(f"停止失败: {e}")
+                print(f"Force stop failed: {e}")
                 return False
 
     def is_connected(self) -> bool:
-        """检查是否已连接（简单检查，不保证可用）"""
+        """Check if connected (simple check, does not guarantee availability)"""
         with self.lock:
             return self.serial is not None and self.serial.is_open
 
     def __enter__(self):
-        """支持 with 语句"""
+        """Context manager entry"""
         self.connect()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        """支持 with 语句"""
+        """Context manager exit"""
         self.disconnect()
 
     def read_until(self, expected: bytes, timeout: Optional[float] = None) -> bytes:
-        """读取直到遇到特定结束符或超时"""
+        """Read until specific terminator or timeout"""
         if not self.serial:
             return b""
 

@@ -7,11 +7,11 @@ from serial import SerialException
 
 class CodeRunner(QObject):
     """
-    负责在 MicroPython 设备上执行代码
+    Responsible for executing code on MicroPython devices
     """
 
     # Qt Signals
-    error_received = Signal(str)   # 错误消息
+    error_received = Signal(str)   # Error message
 
     def __init__(self, device_manager: DeviceManager):
         super().__init__()
@@ -19,21 +19,21 @@ class CodeRunner(QObject):
 
     def run_file(self, filepath: str) -> bool:
         """
-        运行设备上的文件（假设已连接且处于 Raw REPL）
+        Run a file on the device (assuming connected and in Raw REPL)
 
         Args:
-            filepath: 设备上的文件路径，如 'main.py' 或 '/lib/sensor.py'
+            filepath: File path on the device, e.g., 'main.py' or '/lib/sensor.py'
 
         Returns:
-            是否成功执行
+            Whether execution was successful
         """
         try:
-            # 构造执行代码
+            # Construct execution code
             code = f"exec(open('{filepath}').read())"
 
-            # 发送代码
+            # Send code
             self.dm.serial.write(code.encode('utf-8'))
-            self.dm.serial.write(b'\x04')  # Ctrl+D 执行
+            self.dm.serial.write(b'\x04')  # Execute with Ctrl+D
 
             response = self.dm.read_until(b'OK', timeout=2)
 
@@ -50,90 +50,90 @@ class CodeRunner(QObject):
 
     def run_code(self, code: str) -> bool:
         """
-        直接执行代码字符串，读取完整输出避免缓冲区污染
+        Execute code string directly, read full output to avoid buffer pollution
 
         Args:
-            code: Python 代码
+            code: Python code
 
         Returns:
-            是否成功执行
+            Whether execution was successful
         """
 
         logger = setup_logger(__name__)
 
         try:
-            # 发送代码
+            # Send code
             self.dm.serial.write(code.encode('utf-8'))
-            self.dm.serial.write(b'\x04')  # Ctrl+D 执行
+            self.dm.serial.write(b'\x04')  # Execute with Ctrl+D
 
-            logger.debug("[代码运行] 已发送代码和 Ctrl+D")
+            logger.debug("[Code Run] Code and Ctrl+D sent")
 
-            # 读取确认
+            # Read confirmation
             response = self.dm.read_until(b'OK', timeout=2)
             if b'OK' not in response:
                 self.error_received.emit("Device no response")
                 return False
 
-            logger.debug("[代码运行] 收到 OK 确认")
+            logger.debug("[Code Run] OK confirmation received")
             return True
 
         except Exception as e:
-            logger.exception(f"[代码运行] 执行异常")
+            logger.exception(f"[Code Run] Execution exception")
             self.error_received.emit(f"Exception when running: {e}")
             return False
 
     def stop(self) -> Optional[bool]:
         """
-        停止代码执行并软重启 REPL
+        Stop code execution and soft reboot REPL
 
         Returns:
-            True 如果停止成功，False 如果失败
-            None 如果遇到串口异常（需要重新连接）
+            True if stopped successfully, False if failed
+            None if serial exception occurred (reconnection needed)
         """
 
         logger = setup_logger(__name__)
 
-        logger.info("[停止代码] 开始执行停止操作")
+        logger.info("[Stop Code] Starting stop operation")
 
-        # 检查串口是否存在且打开
+        # Check if serial port exists and is open
         if not self.dm.serial or not self.dm.serial.is_open:
-            logger.warning("[停止代码] 串口未打开")
+            logger.warning("[Stop Code] Serial port not open")
             return None
 
         try:
             with self.dm.lock:
-                # 1. 交替发送 Ctrl+C 和 Ctrl+D，增强中断能力
-                # Ctrl+C 用于中断运行的程序
-                # Ctrl+D 用于执行并触发 soft reset
+                # 1. Alternately send Ctrl+C and Ctrl+D to enhance interruption capability
+                # Ctrl+C interrupts running program
+                # Ctrl+D executes and triggers soft reset
                 for i in range(3):
-                    # 发送 Ctrl+C
+                    # Send Ctrl+C
                     self.dm.serial.write(b'\x03')
-                    logger.debug(f"[停止代码] 发送 Ctrl+C (尝试 {i+1}/5)")
+                    logger.debug(f"[Stop Code] sending Ctrl+C (Attempt {i+1}/5)")
                     time.sleep(0.05)
 
-                    # 发送 Ctrl+D
+                    # Send Ctrl+D
                     self.dm.serial.write(b'\x04')
-                    logger.debug(f"[停止代码] 发送 Ctrl+D (尝试 {i+1}/5)")
+                    logger.debug(f"[Stop Code] sending Ctrl+D (Attempt {i+1}/5)")
                     time.sleep(0.05)
 
-                # 2. 清空缓冲区
+                # 2. Clear buffer
                 try:
                     self.dm.serial.reset_input_buffer()
-                    logger.debug("[停止代码] 已清空输入缓冲区")
+                    logger.debug("[Stop Code] Input buffer cleared")
                 except:
                     pass
 
-                # 3. 最后再发送一次 Ctrl+D 确保进入 soft reset
+                # 3. Send Ctrl+D one last time to ensure soft reset
                 self.dm.serial.write(b'\x04')
-                logger.debug("[停止代码] 最后发送 Ctrl+D (soft reset)")
-                time.sleep(0.5)  # 等待设备重启
+                logger.debug("[Stop Code] Sending final Ctrl+D (soft reset)")
+                time.sleep(0.5)  # Wait for device reboot
 
-                # 4. 重新进入 Raw REPL（显式发送 Ctrl+A）
+                # 4. Re-enter Raw REPL (explicitly send Ctrl+A)
                 self.dm.serial.write(b'\x01')
                 response = self.dm.read_until(b'raw REPL; CTRL-B to exit\r\n', timeout=2)
                 if b'raw REPL' not in response:
-                    logger.warning(f"[停止代码] 未进入 Raw REPL: {response}")
-                    # 再尝试一次：先退出 Raw 再进入，避免残留状态
+                    logger.warning(f"[Stop Code] Failed to enter Raw REPL: {response}")
+                    # Try again: exit Raw then re-enter to avoid residual state
                     self.dm.serial.write(b'\x02')
                     time.sleep(0.1)
                     self.dm.serial.write(b'\x01')
@@ -143,15 +143,15 @@ class CodeRunner(QObject):
 
                 self.dm.read_until(b'>', timeout=1)
 
-                logger.info("[停止代码] 软重启成功，REPL 就绪")
+                logger.info("[Stop Code] Soft reset successful, REPL ready")
                 return True
 
         except SerialException as e:
-            logger.error(f"[停止代码] 串口异常: {e}")
-            # 返回 None 表示需要重新连接
+            logger.error(f"[Stop Code] Serial exception: {e}")
+            # Return None to indicate reconnection needed
             return None
 
         except Exception as e:
-            logger.exception("[停止代码] 异常")
+            logger.exception("[Stop Code] Exception")
             self.error_received.emit(f"[System] Exception when stopping: {e}")
             return False

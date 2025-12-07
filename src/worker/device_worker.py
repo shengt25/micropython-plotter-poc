@@ -8,46 +8,46 @@ from .file_manager import FileManager
 
 class DeviceWorker(QObject):
     """
-    在后台线程中执行设备操作的 Worker
-    避免阻塞 UI 线程
+    Worker for performing device operations in a background thread
+    Avoids blocking the UI thread
     """
 
-    # Signals - 请求信号（UI -> Worker）
-    connect_requested = Signal()        # 请求连接设备
-    run_code_requested = Signal(str)    # 请求运行代码
-    stop_requested = Signal()           # 请求停止代码
-    disconnect_requested = Signal()     # 请求断开连接
-    list_dir_requested = Signal(str)    # 请求列出目录
-    read_file_requested = Signal(str)   # 请求读取文件
-    write_file_requested = Signal(str, str)  # 请求写入文件 (path, content)
-    delete_path_requested = Signal(str)  # 请求删除文件或目录
-    set_port_requested = Signal(str)        # 请求切换串口
+    # Signals - Request signals (UI -> Worker)
+    connect_requested = Signal()        # Request to connect
+    run_code_requested = Signal(str)    # Request to run code
+    stop_requested = Signal()           # Request to stop code
+    disconnect_requested = Signal()     # Request to disconnect
+    list_dir_requested = Signal(str)    # Request to list directory
+    read_file_requested = Signal(str)   # Request to read file
+    write_file_requested = Signal(str, str)  # Request to write file (path, content)
+    delete_path_requested = Signal(str)  # Request to delete file or directory
+    set_port_requested = Signal(str)        # Request to change port
 
-    # Signals - 操作完成信号
-    initialized = Signal()              # Worker 初始化完成
-    connect_finished = Signal(bool)     # 连接完成 (成功/失败)
-    disconnect_finished = Signal()      # 断开完成
-    run_finished = Signal(bool)         # 运行完成 (成功/失败)
-    stop_finished = Signal(bool)        # 停止完成 (成功/失败)
-    list_dir_finished = Signal(bool, str, list)  # 列出目录完成 (success, path, items)
-    read_file_finished = Signal(bool, str, str)  # 读取文件完成 (success, path, content)
-    write_file_finished = Signal(bool, str)      # 写入文件完成 (success, path)
-    delete_path_finished = Signal(bool, str)     # 删除路径完成 (success, path)
-    file_access_busy = Signal(str, str)          # 设备忙导致文件操作失败 (operation, path)
+    # Signals - Completion signals
+    initialized = Signal()              # Worker initialization complete
+    connect_finished = Signal(bool)     # Connect finished (success/fail)
+    disconnect_finished = Signal()      # Disconnect finished
+    run_finished = Signal(bool)         # Run finished (success/fail)
+    stop_finished = Signal(bool)        # Stop finished (success/fail)
+    list_dir_finished = Signal(bool, str, list)  # List dir finished (success, path, items)
+    read_file_finished = Signal(bool, str, str)  # Read file finished (success, path, content)
+    write_file_finished = Signal(bool, str)      # Write file finished (success, path)
+    delete_path_finished = Signal(bool, str)     # Delete path finished (success, path)
+    file_access_busy = Signal(str, str)          # Device busy caused file op failure (operation, path)
 
-    # Signals - 进度信息
-    progress = Signal(str)              # 进度消息（显示在输出控制台）
-    status_changed = Signal(str)        # 状态变化（显示在状态栏）
+    # Signals - Progress info
+    progress = Signal(str)              # Progress message (displayed in output console)
+    status_changed = Signal(str)        # Status changed (displayed in status bar)
 
-    # Signals - 输出信息（从 CodeRunner 转发）
+    # Signals - Output info (forwarded from CodeRunner)
     output_received = Signal(str)
     error_received = Signal(str)
 
-    # Signals - 绘图数据
-    plot_data_received = Signal(list)  # 绘图数据包
-    plot_config_received = Signal(list)  # 绘图通道配置
+    # Signals - Plot data
+    plot_data_received = Signal(list)  # Plot data packet
+    plot_config_received = Signal(list)  # Plot channel config
 
-    # Signals - 端口变化
+    # Signals - Port change
     port_changed = Signal(str)
 
     def __init__(self, port: str, baudrate: int = 115200):
@@ -55,7 +55,7 @@ class DeviceWorker(QObject):
         self.port = port
         self.baudrate = baudrate
 
-        # 这些对象会在 Worker 线程中创建和使用
+        # These objects will be created and used in the Worker thread
         self.device_manager = None
         self.code_runner = None
         self.plot_handler = None
@@ -65,33 +65,33 @@ class DeviceWorker(QObject):
     @Slot()
     def initialize(self):
         """
-        在 Worker 线程中初始化设备管理器
-        必须在 moveToThread 之后调用
+        Initialize DeviceManager in Worker thread
+        Must be called after moveToThread
         """
         self.device_manager = DeviceManager(self.port, self.baudrate)
         self.code_runner = CodeRunner(self.device_manager)
 
-        # 创建绘图数据流处理器
+        # Create plot stream handler
         self.plot_handler = PlotStreamHandler(self.device_manager)
 
-        # 连接 CodeRunner 的 Signals 并转发到 UI
+        # Connect CodeRunner signals and forward to UI
         self.code_runner.error_received.connect(self.error_received.emit)
 
-        # 连接 PlotStreamHandler 的 Signals
+        # Connect PlotStreamHandler signals
         self.plot_handler.plot_data_received.connect(self.plot_data_received.emit)
         self.plot_handler.plot_config_received.connect(self.plot_config_received.emit)
         self.plot_handler.text_data_received.connect(self.output_received.emit)
 
-        # 创建后台监控定时器
+        # Create background monitor timer
         self.monitor_timer = QTimer()
         self.monitor_timer.timeout.connect(self._monitor_serial_output)
 
-        # 发出初始化完成信号
+        # Emit initialization complete signal
         self.initialized.emit()
 
     @Slot()
     def do_connect(self):
-        """连接设备"""
+        """Connect to device"""
         self.progress.emit("[System] Connecting to device...")
         self.status_changed.emit("Connecting...")
 
@@ -108,15 +108,15 @@ class DeviceWorker(QObject):
 
     @Slot()
     def do_disconnect(self):
-        """断开设备（用户主动断开）"""
+        """Disconnect device (user initiated)"""
         self.progress.emit("[System] Disconnecting from device...")
         self.status_changed.emit("Disconnecting...")
 
-        # 停止后台监控定时器（如果正在运行）
+        # Stop background monitor timer (if running)
         if self.monitor_timer and self.monitor_timer.isActive():
             self.monitor_timer.stop()
 
-        # 断开连接
+        # Disconnect
         self.device_manager.disconnect()
 
         self.progress.emit("[System] Disconnected")
@@ -126,14 +126,14 @@ class DeviceWorker(QObject):
     @Slot(str)
     def do_run_code(self, code: str):
         """
-        运行代码
+        Run code
 
-        步骤：
-        1. 检查连接
-        2. 清理设备状态
-        3. 执行代码
+        Steps:
+        1. Check connection
+        2. Cleanup device status
+        3. Execute code
         """
-        # 1. 确保连接
+        # 1. Ensure connection
         if not self.device_manager.is_connected():
             self.progress.emit("[System] Connecting to device...")
             self.status_changed.emit("Connecting...")
@@ -144,7 +144,7 @@ class DeviceWorker(QObject):
                 return
             self.progress.emit("[System] Successfully connected to device")
 
-        # 2. 清理设备状态
+        # 2. Cleanup device status
         self.progress.emit("[System] Cleaning up status...")
         if not self.code_runner.stop():
             self.progress.emit("[Error] Device no response, click stop/reset or hard reset on device")
@@ -152,7 +152,7 @@ class DeviceWorker(QObject):
             self.run_finished.emit(False)
             return
 
-        # 3. 执行代码
+        # 3. Execute code
         self.progress.emit("\n[Info] Running code...")
         self.progress.emit("-" * 50)
         self.status_changed.emit("Running...")
@@ -162,9 +162,9 @@ class DeviceWorker(QObject):
         success = self.code_runner.run_code(code)
 
         if success:
-            # 启动后台监控，读取串口输出
+            # Start background monitor to read serial output
             if self.monitor_timer:
-                self.monitor_timer.start(50)  # 每 50ms 轮询一次
+                self.monitor_timer.start(50)  # Poll every 50ms
             self.status_changed.emit("Code running successfully")
         else:
             self.status_changed.emit("Code running failed")
@@ -174,34 +174,34 @@ class DeviceWorker(QObject):
     @Slot()
     def do_stop(self):
         """
-        停止代码
+        Stop code
 
-        步骤：
-        1. 停止后台监控
-        2. 直接发送停止信号（不先握手，避免等待超时）
-        3. 如果串口异常，自动重新连接
+        Steps:
+        1. Stop background monitor
+        2. Send stop signal directly (no handshake to avoid timeout)
+        3. If serial exception, auto reconnect
         """
-        # 1. 停止后台监控
+        # 1. Stop background monitor
         if self.monitor_timer and self.monitor_timer.isActive():
             self.monitor_timer.stop()
 
-        # 2. 直接发送停止信号（无论是否显示为已连接）
-        # 即使串口状态不明，也先尝试发送 Ctrl+C/Ctrl+D
-        # 这样可以避免在设备疯狂输出时等待握手超时
+        # 2. Send stop signal directly (regardless of connection status)
+        # Even if serial status is unknown, try sending Ctrl+C/Ctrl+D
+        # This avoids waiting for handshake timeout when device is spamming output
         self.progress.emit("[Stop] Stopping code execution...")
         self.status_changed.emit("Stopping...")
 
         success = self.code_runner.stop()
 
-        # 3. 如果返回 None，表示串口异常，需要重新连接
+        # 3. If None returned, serial exception occurred, reconnect needed
         if success is None:
             self.progress.emit("[System] Device disconnected, reconnecting...")
             self.status_changed.emit("Reconnecting...")
 
-            # 断开旧连接
+            # Disconnect old connection
             self.device_manager.disconnect()
 
-            # 尝试重新连接
+            # Try to reconnect
             if self.device_manager.connect():
                 self.progress.emit("[System] Reconnected successfully, stopping code...")
                 success = self.code_runner.stop()
@@ -226,236 +226,236 @@ class DeviceWorker(QObject):
 
     @Slot(str)
     def do_list_dir(self, path: str):
-        """列出目录内容（在 Worker 线程执行）"""
+        """List directory content (run in Worker thread)"""
 
         logger = setup_logger(__name__)
 
-        # 1. 检查连接
+        # 1. Check connection
         if not self.device_manager.is_connected():
-            logger.warning("[文件浏览器] 设备未连接")
+            logger.warning("[File Browser] Device not connected")
             self.progress.emit("[File Browser] Device not connected")
             self.list_dir_finished.emit(False, path, [])
             return
 
-        # 2. 生成 MicroPython 代码
+        # 2. Generate MicroPython code
         code = FileManager.generate_list_dir_code(path)
 
-        logger.debug(f"[文件浏览器] 准备列出目录: {path}")
+        logger.debug(f"[File Browser] Preparing to list directory: {path}")
 
         try:
             with self.device_manager.lock:
-                # 清空缓冲区
+                # Clear buffer
                 try:
                     self.device_manager.serial.reset_input_buffer()
-                    logger.debug("[文件浏览器] 已清空输入缓冲区")
+                    logger.debug("[File Browser] Input buffer cleared")
                 except:
                     pass
 
-                # 3. 发送代码
+                # 3. Send code
                 self.device_manager.serial.write(code.encode('utf-8'))
-                self.device_manager.serial.write(b'\x04')  # Ctrl+D 执行
+                self.device_manager.serial.write(b'\x04')  # Execute with Ctrl+D
 
-                logger.debug(f"[文件浏览器] 已发送列出目录命令")
+                logger.debug(f"[File Browser] List directory command sent")
 
-                # 4. 读取确认
+                # 4. Read confirmation
                 response = self.device_manager.read_until(b'OK', timeout=2)
                 if b'OK' not in response:
-                    logger.warning(f"[文件浏览器] 未收到确认: {path}")
+                    logger.warning(f"[File Browser] No confirmation received: {path}")
                     self.file_access_busy.emit("list directory", path)
                     self.list_dir_finished.emit(False, path, [])
                     return
 
-                # 5. 读取输出
+                # 5. Read output
                 output_bytes = self.device_manager.read_until(b'\x04\x04', timeout=5)
                 output = output_bytes.decode('utf-8', errors='replace')
 
-                logger.debug(f"[文件浏览器] 接收到输出: {output}")
+                logger.debug(f"[File Browser] Output received: {output}")
 
-                # 6. 解析结果
+                # 6. Parse result
                 success, items = FileManager.parse_list_dir_result(output)
 
                 if success:
-                    logger.info(f"[文件浏览器] 成功列出目录: {path}, {len(items)} 项")
+                    logger.info(f"[File Browser] Directory listed successfully: {path}, {len(items)} items")
                 else:
-                    logger.error(f"[文件浏览器] 解析失败: {path}")
+                    logger.error(f"[File Browser] Parse failed: {path}")
 
                 self.list_dir_finished.emit(success, path, items)
 
         except Exception as e:
-            logger.exception(f"[文件浏览器] 异常: {path}")
+            logger.exception(f"[File Browser] Exception: {path}")
             self.progress.emit(f"[File Browser] Failed to list directory: {e}")
             self.list_dir_finished.emit(False, path, [])
 
     @Slot(str)
     def do_read_file(self, path: str):
-        """读取文件内容（在 Worker 线程执行）"""
+        """Read file content (run in Worker thread)"""
 
         logger = setup_logger(__name__)
 
-        # 1. 检查连接
+        # 1. Check connection
         if not self.device_manager.is_connected():
-            logger.warning("[文件读取] 设备未连接")
+            logger.warning("[File Read] Device not connected")
             self.progress.emit("[File] Device not connected, trying to reconnect...")
             self.read_file_finished.emit(False, path, "")
             return
 
-        # 2. 生成 MicroPython 代码
+        # 2. Generate MicroPython code
         code = FileManager.generate_read_file_code(path)
 
-        logger.debug(f"[文件读取] 准备读取文件: {path}")
+        logger.debug(f"[File Read] Preparing to read file: {path}")
 
         try:
             with self.device_manager.lock:
-                # 清空缓冲区
+                # Clear buffer
                 try:
                     self.device_manager.serial.reset_input_buffer()
-                    logger.debug("[文件读取] 已清空输入缓冲区")
+                    logger.debug("[File Read] Input buffer cleared")
                 except Exception as e:
-                    logger.error(f"[文件读取] 清空缓冲区失败: {e}")
+                    logger.error(f"[File Read] Failed to clear buffer: {e}")
 
-                # 3. 发送代码
+                # 3. Send code
                 self.device_manager.serial.write(code.encode('utf-8'))
-                self.device_manager.serial.write(b'\x04')  # Ctrl+D 执行
+                self.device_manager.serial.write(b'\x04')  # Execute with Ctrl+D
 
-                logger.debug(f"[文件读取] 已发送读取命令")
+                logger.debug(f"[File Read] Read command sent")
 
-                # 4. 读取确认（设置较短超时检测设备忙碌）
+                # 4. Read confirmation (short timeout to detect busy device)
                 try:
                     response = self.device_manager.read_until(b'OK', timeout=2)
 
                     if b'OK' not in response:
-                        logger.warning(f"[文件读取] 设备无响应或忙碌，响应: {response[:50]}")
+                        logger.warning(f"[File Read] Device no response or busy, response: {response[:50]}")
                         self.file_access_busy.emit("read file", path)
                         self.read_file_finished.emit(False, path, "")
                         return
 
                 except Exception as e:
-                    logger.error(f"[文件读取] 读取确认超时: {e}")
+                    logger.error(f"[File Read] Read confirmation timed out: {e}")
                     self.file_access_busy.emit("read file", path)
                     self.read_file_finished.emit(False, path, "")
                     return
 
-                # 5. 读取输出
+                # 5. Read output
                 output_bytes = self.device_manager.read_until(b'\x04\x04', timeout=5)
                 output = output_bytes.decode('utf-8', errors='replace')
 
-                logger.debug(f"[文件读取] 接收到 {len(output)} 字符")
+                logger.debug(f"[File Read] Received {len(output)} chars")
 
-                # 6. 解析结果
+                # 6. Parse result
                 success, content = FileManager.parse_read_file_result(output)
 
                 if success:
-                    # content 是 bytes 类型，需要解码为 str
+                    # content is bytes, need to decode to str
                     content_str = content.decode('utf-8', errors='replace')
-                    logger.info(f"[文件读取] 成功: {path}, {len(content_str)} 字符")
+                    logger.info(f"[File Read] Success: {path}, {len(content_str)} chars")
                     self.progress.emit(f"[File] Successfully opened: {path}")
                     self.read_file_finished.emit(success, path, content_str)
                 else:
-                    # content 是错误消息，也是 bytes，需要解码
+                    # content is error message (bytes), needs decoding
                     error_msg = content.decode('utf-8', errors='replace')
-                    logger.error(f"[文件读取] 解析失败: {path}, 错误: {error_msg}")
+                    logger.error(f"[File Read] Parse failed: {path}, Error: {error_msg}")
                     self.progress.emit(f"[File] Failed to open: {path}")
                     self.read_file_finished.emit(success, path, error_msg)
 
         except Exception as e:
-            logger.exception(f"[文件读取] 异常: {path}")
+            logger.exception(f"[File Read] Exception: {path}")
             self.progress.emit(f"[File] Failed to read: {e}")
             self.read_file_finished.emit(False, path, "")
 
     @Slot(str, str)
     def do_write_file(self, path: str, content: str):
-        """写入文件内容（在 Worker 线程执行）"""
+        """Write file content (run in Worker thread)"""
 
         logger = setup_logger(__name__)
 
-        # 1. 检查连接
+        # 1. Check connection
         if not self.device_manager.is_connected():
-            logger.warning("[文件写入] 设备未连接")
+            logger.warning("[File Write] Device not connected")
             self.progress.emit("[File] Device not connected")
             self.write_file_finished.emit(False, path)
             return
 
-        # 2. 生成 MicroPython 代码
+        # 2. Generate MicroPython code
         code = FileManager.generate_write_file_code(path, content)
 
-        logger.debug(f"[文件写入] 准备写入文件: {path}, {len(content)} 字符")
+        logger.debug(f"[File Write] Preparing to write file: {path}, {len(content)} chars")
 
         try:
             with self.device_manager.lock:
-                # 清空缓冲区
+                # Clear buffer
                 try:
                     self.device_manager.serial.reset_input_buffer()
-                    logger.debug("[文件写入] 已清空输入缓冲区")
+                    logger.debug("[File Write] Input buffer cleared")
                 except Exception as e:
-                    logger.error(f"[文件写入] 清空缓冲区失败: {e}")
+                    logger.error(f"[File Write] Failed to clear buffer: {e}")
 
-                # 3. 发送代码
+                # 3. Send code
                 self.device_manager.serial.write(code.encode('utf-8'))
-                self.device_manager.serial.write(b'\x04')  # Ctrl+D 执行
+                self.device_manager.serial.write(b'\x04')  # Execute with Ctrl+D
 
-                logger.debug(f"[文件写入] 已发送写入命令")
+                logger.debug(f"[File Write] Write command sent")
 
-                # 4. 读取确认（设置较短超时检测设备忙碌）
+                # 4. Read confirmation (short timeout to detect busy device)
                 try:
                     response = self.device_manager.read_until(b'OK', timeout=2)
 
                     if b'OK' not in response:
-                        logger.warning(f"[文件写入] 设备无响应或忙碌")
+                        logger.warning(f"[File Write] Device no response or busy")
                         self.file_access_busy.emit("write file", path)
                         self.write_file_finished.emit(False, path)
                         return
 
                 except Exception as e:
-                    logger.error(f"[文件写入] 读取确认超时: {e}")
+                    logger.error(f"[File Write] Read confirmation timed out: {e}")
                     self.file_access_busy.emit("write file", path)
                     self.write_file_finished.emit(False, path)
                     return
 
-                # 5. 读取输出
+                # 5. Read output
                 output_bytes = self.device_manager.read_until(b'\x04\x04', timeout=5)
                 output = output_bytes.decode('utf-8', errors='replace')
 
-                logger.debug(f"[文件写入] 接收到响应: {len(output)} 字符")
+                logger.debug(f"[File Write] Response received: {len(output)} chars")
 
-                # 6. 解析结果
+                # 6. Parse result
                 success = FileManager.parse_write_file_result(output)
 
                 if success:
-                    logger.info(f"[文件写入] 成功: {path}")
+                    logger.info(f"[File Write] Success: {path}")
                     self.progress.emit(f"[File] Successfully saved: {path}")
                 else:
-                    logger.error(f"[文件写入] 失败: {path}")
+                    logger.error(f"[File Write] Failed: {path}")
                     self.progress.emit(f"[File] Failed to save: {path}")
 
                 self.write_file_finished.emit(success, path)
 
         except Exception as e:
-            logger.exception(f"[文件写入] 异常: {path}")
+            logger.exception(f"[File Write] Exception: {path}")
             self.progress.emit(f"[File] Failed to write: {e}")
             self.write_file_finished.emit(False, path)
 
     @Slot(str)
     def do_delete_path(self, path: str):
-        """删除指定路径（文件或目录）"""
+        """Delete specified path (file or directory)"""
 
         logger = setup_logger(__name__)
 
         if not self.device_manager.is_connected():
-            logger.warning("[文件删除] 设备未连接")
+            logger.warning("[File Delete] Device not connected")
             self.progress.emit("[File] Device not connected")
             self.delete_path_finished.emit(False, path)
             return
 
         code = FileManager.generate_delete_path_code(path)
-        logger.debug(f"[文件删除] 准备删除: {path}")
+        logger.debug(f"[File Delete] Preparing to delete: {path}")
 
         try:
             with self.device_manager.lock:
                 try:
                     self.device_manager.serial.reset_input_buffer()
-                    logger.debug("[文件删除] 已清空输入缓冲区")
+                    logger.debug("[File Delete] Input buffer cleared")
                 except Exception as e:
-                    logger.error(f"[文件删除] 清空缓冲区失败: {e}")
+                    logger.error(f"[File Delete] Failed to clear buffer: {e}")
 
                 self.device_manager.serial.write(code.encode('utf-8'))
                 self.device_manager.serial.write(b'\x04')
@@ -463,12 +463,12 @@ class DeviceWorker(QObject):
                 try:
                     response = self.device_manager.read_until(b'OK', timeout=2)
                     if b'OK' not in response:
-                        logger.warning("[文件删除] 设备无响应或忙碌")
+                        logger.warning("[File Delete] Device no response or busy")
                         self.file_access_busy.emit("delete path", path)
                         self.delete_path_finished.emit(False, path)
                         return
                 except Exception as e:
-                    logger.error(f"[文件删除] 读取确认超时: {e}")
+                    logger.error(f"[File Delete] Read confirmation timed out: {e}")
                     self.file_access_busy.emit("delete path", path)
                     self.delete_path_finished.emit(False, path)
                     return
@@ -479,22 +479,22 @@ class DeviceWorker(QObject):
                 success = FileManager.parse_delete_path_result(output)
 
                 if success:
-                    logger.info(f"[文件删除] 成功: {path}")
+                    logger.info(f"[File Delete] Success: {path}")
                     self.progress.emit(f"[File] Deleted: {path}")
                 else:
-                    logger.error(f"[文件删除] 失败: {path}")
+                    logger.error(f"[File Delete] Failed: {path}")
                     self.progress.emit(f"[File] Delete failed: {path}")
 
                 self.delete_path_finished.emit(success, path)
 
         except Exception as e:
-            logger.exception(f"[文件删除] 异常: {path}")
+            logger.exception(f"[File Delete] Exception: {path}")
             self.progress.emit(f"[File] Failed to delete: {e}")
             self.delete_path_finished.emit(False, path)
 
     @Slot(str)
     def set_port(self, port: str):
-        """设置串口并重新连接（如果需要）"""
+        """Set port and reconnect (if needed)"""
         if not self.device_manager:
             return
         if self.device_manager.port == port:
@@ -506,41 +506,42 @@ class DeviceWorker(QObject):
     @Slot(bool)
     def set_plot_mode(self, enabled: bool):
         """
-        启用/禁用绘图模式
+        Enable/Disable plot mode
 
         Args:
-            enabled: True 启用绘图模式，False 禁用
+            enabled: True to enable, False to disable
         """
         self.plot_mode_enabled = enabled
         if self.plot_handler:
-            # 清空缓冲区，避免残留数据
+            # Clear buffer to avoid residual data
             self.plot_handler.buffer.clear()
             if enabled:
                 self.plot_handler.reset_config_state()
 
     def _monitor_serial_output(self):
         """
-        后台监控串口输出（定时器回调）
+        Background monitor for serial output (timer callback)
 
-        在代码运行时定期读取串口数据，并根据是否启用绘图模式进行分流：
-        - 绘图模式：通过 PlotStreamHandler 解析数据包
-        - 普通模式：直接解码为文本输出
+        Periodically reads serial data during code execution,
+        and routes data based on whether plot mode is enabled:
+        - Plot mode: Parse packets via PlotStreamHandler
+        - Normal mode: Decode directly as text output
         """
         if not self.device_manager or not self.device_manager.is_connected():
             return
 
         try:
             with self.device_manager.lock:
-                # 检查是否有数据可读
+                # Check if data available
                 if self.device_manager.serial.in_waiting > 0:
-                    # 读取所有可用数据
+                    # Read all available data
                     raw_data = self.device_manager.serial.read(
                         self.device_manager.serial.in_waiting
                     )
 
-                    # 始终通过 PlotStreamHandler 解析，以滤除绘图协议数据
+                    # Always parse via PlotStreamHandler to filter plot protocol data
                     self.plot_handler.process_data(raw_data)
 
         except Exception as e:
             logger = setup_logger(__name__)
-            logger.exception("后台监控串口输出异常")
+            logger.exception("Background monitor serial output exception")

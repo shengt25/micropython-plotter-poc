@@ -1,26 +1,26 @@
 """
-Python语法高亮器
-使用QSyntaxHighlighter为Python代码提供基础的语法高亮
+Python Syntax Highlighter
+Provides basic syntax highlighting for Python code using QSyntaxHighlighter
 """
 from PySide6.QtGui import QSyntaxHighlighter, QTextCharFormat, QFont, QColor
 from PySide6.QtCore import QRegularExpression
 
 
 class PythonSyntaxHighlighter(QSyntaxHighlighter):
-    """Python语法高亮器"""
+    """Python Syntax Highlighter"""
 
     def __init__(self, document):
         super().__init__(document)
 
-        # 定义高亮规则
+        # Define highlighting rules
         self.highlighting_rules = []
 
-        # 关键字格式 (蓝色加粗)
+        # Keyword format (blue bold)
         keyword_format = QTextCharFormat()
         keyword_format.setForeground(QColor("#0000FF"))
         keyword_format.setFontWeight(QFont.Weight.Bold)
 
-        # Python关键字列表
+        # Python keyword list
         keywords = [
             'and', 'as', 'assert', 'break', 'class', 'continue', 'def',
             'del', 'elif', 'else', 'except', 'False', 'finally', 'for',
@@ -33,7 +33,7 @@ class PythonSyntaxHighlighter(QSyntaxHighlighter):
             pattern = QRegularExpression(f'\\b{word}\\b')
             self.highlighting_rules.append((pattern, keyword_format))
 
-        # 内置函数 (深紫色)
+        # Built-in functions (dark purple)
         builtin_format = QTextCharFormat()
         builtin_format.setForeground(QColor("#8B008B"))
         builtins = [
@@ -45,21 +45,21 @@ class PythonSyntaxHighlighter(QSyntaxHighlighter):
             pattern = QRegularExpression(f'\\b{word}\\b')
             self.highlighting_rules.append((pattern, builtin_format))
 
-        # 字符串 (绿色)
+        # String (green)
         string_format = QTextCharFormat()
         string_format.setForeground(QColor("#008000"))
-        # 双引号字符串
+        # Double-quoted string
         self.highlighting_rules.append((
             QRegularExpression('"[^"\\\\]*(\\\\.[^"\\\\]*)*"'),
             string_format
         ))
-        # 单引号字符串
+        # Single-quoted string
         self.highlighting_rules.append((
             QRegularExpression("'[^'\\\\]*(\\\\.[^'\\\\]*)*'"),
             string_format
         ))
 
-        # 注释 (灰色斜体)
+        # Comment (gray italic)
         comment_format = QTextCharFormat()
         comment_format.setForeground(QColor("#808080"))
         comment_format.setFontItalic(True)
@@ -68,7 +68,7 @@ class PythonSyntaxHighlighter(QSyntaxHighlighter):
             comment_format
         ))
 
-        # 数字 (橙色)
+        # Number (orange)
         number_format = QTextCharFormat()
         number_format.setForeground(QColor("#FF8C00"))
         self.highlighting_rules.append((
@@ -76,7 +76,7 @@ class PythonSyntaxHighlighter(QSyntaxHighlighter):
             number_format
         ))
 
-        # 函数定义 (深蓝色)
+        # Function definition (dark blue)
         function_format = QTextCharFormat()
         function_format.setForeground(QColor("#00008B"))
         function_format.setFontWeight(QFont.Weight.Bold)
@@ -85,7 +85,7 @@ class PythonSyntaxHighlighter(QSyntaxHighlighter):
             function_format
         ))
 
-        # 类定义 (深蓝色)
+        # Class definition (dark blue)
         class_format = QTextCharFormat()
         class_format.setForeground(QColor("#00008B"))
         class_format.setFontWeight(QFont.Weight.Bold)
@@ -94,15 +94,15 @@ class PythonSyntaxHighlighter(QSyntaxHighlighter):
             class_format
         ))
 
-        # 三引号字符串格式
+        # Triple-quoted string format
         self.tri_single_format = QTextCharFormat()
         self.tri_single_format.setForeground(QColor("#008000"))
         self.tri_double_format = QTextCharFormat()
         self.tri_double_format.setForeground(QColor("#008000"))
 
     def highlightBlock(self, text):
-        """对一个文本块应用语法高亮"""
-        # 应用基本规则
+        """Apply syntax highlighting to a text block"""
+        # Apply basic rules
         for pattern, format in self.highlighting_rules:
             match_iterator = pattern.globalMatch(text)
             while match_iterator.hasNext():
@@ -113,10 +113,10 @@ class PythonSyntaxHighlighter(QSyntaxHighlighter):
                     format
                 )
 
-        # 处理多行字符串（三引号）
+        # Handle multi-line strings (triple quotes)
         self.setCurrentBlockState(0)
 
-        # 三重双引号
+        # Triple double quotes
         start_index = 0
         if self.previousBlockState() != 1:
             start_index = text.find('"""')
@@ -132,7 +132,7 @@ class PythonSyntaxHighlighter(QSyntaxHighlighter):
             self.setFormat(start_index, comment_length, self.tri_double_format)
             start_index = text.find('"""', start_index + comment_length)
 
-        # 三重单引号
+        # Triple single quotes
         if self.currentBlockState() == 0:
             start_index = 0
             if self.previousBlockState() != 2:

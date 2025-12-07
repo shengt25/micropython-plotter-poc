@@ -494,14 +494,14 @@ class PlotterWindow(QWidget):
 
     @Slot(int)
     def _on_zoom_slider_changed(self, value):
-        """滑块值变化 → 转换为缩放倍数 → 更新输入框"""
+        """Slider value changed -> convert to zoom multiplier -> update input box"""
         if not self.zoom_input:
             return
 
-        # 转换为缩放倍数
+        # Convert to zoom multiplier
         zoom = self._slider_to_zoom(value)
 
-        # 更新输入框显示
+        # Update input box display
         self.zoom_input.blockSignals(True)
         self.zoom_input.setText(f"{zoom:.1f}")
         self.zoom_input.blockSignals(False)
@@ -510,7 +510,7 @@ class PlotterWindow(QWidget):
 
     @Slot()
     def _on_zoom_input_edited(self):
-        """输入框编辑 → 解析缩放倍数 → 更新滑块"""
+        """Input box edited -> parse zoom multiplier -> update slider"""
         if not self.zoom_slider or not self.zoom_input:
             return
 
@@ -519,53 +519,53 @@ class PlotterWindow(QWidget):
             zoom = float(text)
             zoom = max(1.0, min(self.max_zoom_multiplier, zoom))
 
-            # 转换为滑块值
+            # Convert to slider value
             slider_value = self._zoom_to_slider(zoom)
 
             self.zoom_slider.blockSignals(True)
             self.zoom_slider.setValue(slider_value)
             self.zoom_slider.blockSignals(False)
 
-            # 更新显示
+            # Update display
             self.zoom_input.setText(f"{zoom:.1f}")
             self._schedule_zoom_update(slider_value)
 
         except ValueError:
-            # 无效输入，恢复当前值
+            # Invalid input, restore current value
             zoom = self._slider_to_zoom(self.zoom_slider.value())
             self.zoom_input.setText(f"{zoom:.1f}")
 
     def _slider_to_zoom(self, slider_value: int) -> float:
-        """将线性滑块值转换为对数缩放倍数
+        """Convert linear slider value to logarithmic zoom multiplier
 
         Args:
-            slider_value: 滑块值（1-100）
+            slider_value: Slider value (1-100)
 
         Returns:
-            缩放倍数（1.0-50.0）
+            Zoom multiplier (1.0-50.0)
         """
         if slider_value <= 1:
             return 1.0
 
-        # 对数映射：zoom = exp(ln(max_zoom) × (slider/100))
+        # Logarithmic mapping: zoom = exp(ln(max_zoom) × (slider/100))
         log_max = math.log(self.max_zoom_multiplier)
         zoom = math.exp(log_max * slider_value / 100.0)
 
         return zoom
 
     def _zoom_to_slider(self, zoom: float) -> int:
-        """将缩放倍数转换回滑块值
+        """Convert zoom multiplier back to slider value
 
         Args:
-            zoom: 缩放倍数（1.0-50.0）
+            zoom: Zoom multiplier (1.0-50.0)
 
         Returns:
-            滑块值（1-100）
+            Slider value (1-100)
         """
         if zoom <= 1.0:
             return 1
 
-        # 反向对数映射：slider = 100 × ln(zoom) / ln(max_zoom)
+        # Inverse logarithmic mapping: slider = 100 × ln(zoom) / ln(max_zoom)
         log_max = math.log(self.max_zoom_multiplier)
         slider = int(100.0 * math.log(zoom) / log_max)
 
