@@ -225,8 +225,8 @@ class PlotterWindow(QWidget):
         self.background_color = QColor(0, 0, 0)  # Black background
         self.curve_colors = [
             QColor(255, 0, 0),      # Red
-            QColor(0, 0, 255),      # Blue
             QColor(0, 255, 0),      # Green
+            QColor(0, 0, 255),      # Blue
             QColor(255, 255, 0),    # Yellow
             QColor(255, 0, 255),    # Magenta
         ]
