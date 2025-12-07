@@ -11,7 +11,7 @@ from utils.serial_scanner import find_pico_ports, format_label
 
 
 class CodeWindow(QMainWindow):
-    """MicroPython 代码执行窗口"""
+    """MicroPython Code Window"""
 
     def __init__(self):
         super().__init__()
@@ -19,28 +19,28 @@ class CodeWindow(QMainWindow):
         self.setWindowTitle("MicroPython Code Runner")
         self.resize(1000, 700)
 
-        # 绘图窗口（按需创建）
+        # Plotter window (created on demand)
         self.plotter_window = None
         self.auto_open_plot = True
 
-        # 创建 UI 组件
+        # Create UI components
         self._setup_ui()
 
-        # 创建串口监控
+        # Create serial port monitor
         self._setup_port_monitor()
 
-        # 创建后台线程和 Worker
+        # Create background thread and Worker
         self._setup_worker()
 
-        # 连接信号
+        # Connect signals
         self._connect_signals()
 
-        # Worker 初始化完成后自动连接设备
-        # （不在 __init__ 直接调用，避免 Worker 未初始化）
+        # Auto connect to device after Worker initialization
+        # (Connect after init to avoid uninitialized Worker)
 
     def _setup_ui(self):
-        """设置 UI 布局"""
-        # 创建工具栏
+        """Setup UI layout"""
+        # Create toolbar
         self.toolbar = CodeToolBar(self)
         self.addToolBar(self.toolbar)
 
@@ -48,36 +48,36 @@ class CodeWindow(QMainWindow):
         self.worker_ready = False
         self._connect_when_ready = False
         self._busy_directory_paths: set[str] = set()
-        self._pending_deletes: dict[str, bool] = {}  # 记录待删除路径的类型 {path: is_dir}
+        self._pending_deletes: dict[str, bool] = {}  # Record type of paths to delete {path: is_dir}
 
-        # 安装 Plot Lib 的状态追踪
+        # Track Plot Lib installation status
         self._installing_plot_lib = False
-        self._plot_lib_content = None  # 缓存本地文件内容
+        self._plot_lib_content = None  # Cache local file content
 
-        # 创建文件浏览器
+        # Create file browser
         self.file_browser = FileBrowser()
 
-        # 创建多标签代码编辑器
+        # Create multi-tab code editor
         self.tab_editor = TabEditorWidget()
 
-        # 创建输出控制台
+        # Create output console
         self.output_console = OutputConsole()
 
-        # 右侧垂直分割器：代码编辑器 + 输出控制台
+        # Right splitter: Code Editor + Output Console
         right_splitter = QSplitter(Qt.Orientation.Vertical)
         right_splitter.addWidget(self.tab_editor)
         right_splitter.addWidget(self.output_console)
         right_splitter.setStretchFactor(0, 7)
         right_splitter.setStretchFactor(1, 3)
 
-        # 主水平分割器：文件浏览器 + 右侧
+        # Main splitter: File Browser + Right Splitter
         main_splitter = QSplitter(Qt.Orientation.Horizontal)
         main_splitter.addWidget(self.file_browser)
         main_splitter.addWidget(right_splitter)
-        main_splitter.setStretchFactor(0, 3)  # 文件浏览器 30%
-        main_splitter.setStretchFactor(1, 7)  # 右侧 70%
+        main_splitter.setStretchFactor(0, 3)  # File browser 30%
+        main_splitter.setStretchFactor(1, 7)  # Right side 70%
 
-        # 创建中央部件
+        # Create central widget
         central_widget = QWidget()
         layout = QVBoxLayout(central_widget)
         layout.addWidget(main_splitter)
@@ -85,12 +85,12 @@ class CodeWindow(QMainWindow):
 
         self.setCentralWidget(central_widget)
 
-        # 创建状态栏
+        # Create status bar
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
         self.status_bar.showMessage("Initializing...")
 
-        # 初始状态：未连接，禁用需要连接的按钮
+        # Initial state: Disconnected, disable buttons requiring connection
         self.toolbar.run_action.setEnabled(False)
         self.toolbar.stop_action.setEnabled(False)
         self.toolbar.disconnect_action.setEnabled(False)
@@ -102,21 +102,21 @@ class CodeWindow(QMainWindow):
         self.port_monitor.start()
 
     def _setup_worker(self):
-        """设置后台线程和 Worker"""
-        # 创建线程
+        """Setup background thread and Worker"""
+        # Create thread
         self.worker_thread = QThread()
 
-        # 创建 Worker（会在线程中运行）
+        # Create Worker (will run in thread)
         self.worker = DeviceWorker('')
 
-        # 将 Worker 移动到线程
+        # Move Worker to thread
         self.worker.moveToThread(self.worker_thread)
 
-        # 在线程启动后初始化 Worker（重要：必须在线程中创建串口对象）
+        # Initialize Worker after thread starts (Important: serial object must be created in thread)
         self.worker_thread.started.connect(self.worker.initialize)
 
-        # 连接请求信号到槽函数（UI -> Worker）
-        # Qt 会自动使用 QueuedConnection，确保在 Worker 线程执行
+        # Connect request signals to slots (UI -> Worker)
+        # Qt automatically uses QueuedConnection to ensure execution in Worker thread
         self.worker.connect_requested.connect(self.worker.do_connect)
         self.worker.run_code_requested.connect(self.worker.do_run_code)
         self.worker.stop_requested.connect(self.worker.do_stop)
@@ -127,12 +127,12 @@ class CodeWindow(QMainWindow):
         self.worker.delete_path_requested.connect(self.worker.do_delete_path)
         self.worker.set_port_requested.connect(self.worker.set_port)
 
-        # 启动线程
+        # Start thread
         self.worker_thread.start()
 
     def _connect_signals(self):
-        """连接信号和槽"""
-        # 工具栏按钮 -> Worker 操作
+        """Connect signals and slots"""
+        # Toolbar buttons -> Worker actions
         self.toolbar.new_clicked.connect(self.on_new_file)
         self.toolbar.run_clicked.connect(self.on_run_code)
         self.toolbar.stop_clicked.connect(self.on_stop_code)
@@ -140,32 +140,32 @@ class CodeWindow(QMainWindow):
         self.toolbar.disconnect_clicked.connect(self.on_disconnect_clicked)
         self.toolbar.install_plot_lib_clicked.connect(self.on_install_plot_lib_clicked)
 
-        # Worker 初始化完成 -> 自动连接设备
+        # Worker initialization complete -> Auto connect device
         self.worker.initialized.connect(self._connect_device)
 
-        # Worker 进度信息 -> UI
+        # Worker progress info -> UI
         self.worker.progress.connect(self.output_console.append_info)
         self.worker.status_changed.connect(self.status_bar.showMessage)
 
-        # Worker 输出信息 -> 输出控制台
+        # Worker output info -> Output console
         self.worker.output_received.connect(self.output_console.append_output)
         self.worker.error_received.connect(self.output_console.append_error)
 
-        # Worker 操作完成 -> UI 更新
+        # Worker action complete -> UI update
         self.worker.connect_finished.connect(self.on_connect_finished)
         self.worker.run_finished.connect(self.on_run_finished)
         self.worker.stop_finished.connect(self.on_stop_finished)
         self.worker.disconnect_finished.connect(self.on_disconnect_finished)
 
-        # 文件浏览器 -> Worker
+        # File browser -> Worker
         self.file_browser.dir_expand_requested.connect(self.worker.list_dir_requested.emit)
         self.file_browser.file_open_requested.connect(self.on_file_open_requested)
         self.file_browser.delete_requested.connect(self.on_delete_requested)
 
-        # Worker -> 文件浏览器
+        # Worker -> File browser
         self.worker.list_dir_finished.connect(self.on_list_dir_finished)
 
-        # Worker -> 文件操作
+        # Worker -> File operations
         self.worker.read_file_finished.connect(self.on_read_file_finished)
         self.worker.write_file_finished.connect(self.on_write_file_finished)
         self.worker.delete_path_finished.connect(self.on_delete_path_finished)
@@ -183,18 +183,18 @@ class CodeWindow(QMainWindow):
 
         self.worker.port_changed.connect(lambda port: self.status_bar.showMessage(f"Serial port switched to {port}"))
 
-        # 绘图按钮 -> 打开绘图窗口
+        # Plot button -> Open plotter window
         self.toolbar.plot_clicked.connect(self.on_plot_clicked)
 
-        # 绘图数据 -> 转发到绘图窗口
+        # Plot data -> Forward to plotter window
         self.worker.plot_data_received.connect(self._forward_plot_data)
         self.worker.plot_config_received.connect(self._forward_plot_config)
 
-        # 初始化时扫描一次串口但暂不立即连接（等待 Worker 就绪）
+        # Initial scan but do not connect immediately (wait for Worker ready)
         self.refresh_ports(auto_connect=True)
 
     def _connect_device(self):
-        """连接设备"""
+        """Connect to device"""
         self.worker_ready = True
         if not self.current_port:
             self.status_bar.showMessage("Please select a port")
@@ -262,7 +262,7 @@ class CodeWindow(QMainWindow):
         self.current_port = None
         self._connect_when_ready = False
 
-        # 更新 UI 状态
+        # Update UI state
         self._update_ui_for_disconnected_state()
 
         ports = [(info.device, format_label(info)) for info in port_infos]
@@ -287,16 +287,16 @@ class CodeWindow(QMainWindow):
         self.status_bar.showMessage("Created new tab")
 
     def on_run_code(self):
-        """运行代码按钮处理"""
-        # 1. 先检查当前文件是否需要保存
+        """Run code button handler"""
+        # 1. Check if current file needs saving
         self.auto_open_plot = True
         path, content, modified = self.tab_editor.get_current_file_info()
         if path and modified:
-            # 自动保存（等待异步完成信号后才标记为已保存）
+            # Auto save (mark as saved only after async completion signal)
             self.output_console.append_info("[System] Auto saving file...")
             self.worker.write_file_requested.emit(path, content)
 
-        # 2. 获取代码
+        # 2. Get code
         code = self.tab_editor.get_current_code().strip()
 
         if not code:
@@ -304,44 +304,44 @@ class CodeWindow(QMainWindow):
             self.status_bar.showMessage("Code is empty")
             return
 
-        # 禁用按钮，防止重复点击
+        # Disable buttons to prevent double click
         self.set_buttons_enabled(False)
 
-        # 触发 Worker 执行代码（异步执行）
+        # Trigger Worker to run code (async)
         self.worker.run_code_requested.emit(code)
 
     def on_stop_code(self):
-        """停止代码按钮处理"""
-        # 禁用按钮，防止重复点击
+        """Stop code button handler"""
+        # Disable buttons to prevent double click
         self.set_buttons_enabled(False)
 
-        # 触发 Worker 停止代码（异步执行）
+        # Trigger Worker to stop code (async)
         self.worker.stop_requested.emit()
 
     def on_connect_finished(self, success):
-        """连接完成处理"""
+        """Connect finished handler"""
         if success:
             self.file_browser.initialize_root()
-            # 连接成功后启用断开按钮和操作按钮
+            # Enable disconnect and action buttons after successful connection
             self.toolbar.disconnect_action.setEnabled(True)
             self.toolbar.run_action.setEnabled(True)
             self.toolbar.stop_action.setEnabled(True)
             self.toolbar.install_plot_lib_action.setEnabled(True)
         else:
             self.file_browser.show_error("Connecting to device failed")
-            # 连接失败，禁用所有需要连接的按钮
+            # Connection failed, disable all buttons requiring connection
             self.toolbar.disconnect_action.setEnabled(False)
             self.toolbar.run_action.setEnabled(False)
             self.toolbar.stop_action.setEnabled(False)
             self.toolbar.install_plot_lib_action.setEnabled(False)
 
     def on_run_finished(self, success):
-        """运行完成处理"""
-        # 恢复按钮状态
+        """Run finished handler"""
+        # Restore button state
         self.set_buttons_enabled(True)
 
     def on_stop_finished(self, success):
-        """停止完成处理"""
+        """Stop finished handler"""
         self.set_buttons_enabled(True)
 
         if success:
@@ -362,14 +362,14 @@ class CodeWindow(QMainWindow):
         msg_box.exec()
 
     def on_list_dir_finished(self, success: bool, path: str, items: list):
-        """目录列出完成处理"""
+        """Directory list finished handler"""
         if success:
             self.file_browser.populate_directory(path, items)
             self._busy_directory_paths.discard(path)
             return
 
         if path in self._busy_directory_paths:
-            # 设备忙导致目录刷新失败，保持已有列表
+            # Device busy caused directory refresh failure, keep existing list
             self._busy_directory_paths.discard(path)
             self.file_browser.cancel_directory_request(path)
             self.output_console.append_info(
@@ -381,31 +381,31 @@ class CodeWindow(QMainWindow):
         self.output_console.append_error(f"[File browser] Cannot list directory: {path}")
 
     def on_delete_requested(self, path: str, is_dir: bool):
-        """文件或目录删除请求"""
+        """File or directory delete request"""
         target = "folder" if is_dir else "file"
         self.output_console.append_info(f"[File] Deleting {target}: {path}")
-        # 记录删除类型，用于删除成功后的处理
+        # Record delete type for handling after success
         self._pending_deletes[path] = is_dir
         self.worker.delete_path_requested.emit(path)
 
     def on_file_open_requested(self, path: str):
-        """文件打开请求处理（双击文件）"""
+        """File open request handler (double click file)"""
         self.output_console.append_info(f"[File] Opening: {path}")
-        # 触发 Worker 读取文件
+        # Trigger Worker to read file
         self.worker.read_file_requested.emit(path)
 
     def on_read_file_finished(self, success: bool, path: str, content: str):
-        """文件读取完成处理"""
-        # 检查是否是安装流程
+        """File read finished handler"""
+        # Check if it is installation process
         if self._installing_plot_lib and path == '/lib/signal_plotter.py':
             self._handle_plot_lib_check_result(success)
             return
 
         if success:
-            # 检查文件是否已经在标签中打开
+            # Check if file is already open in tab
             current_path, _, _ = self.tab_editor.get_current_file_info()
 
-            # 查找是否有已打开的标签
+            # Check if tab exists
             is_already_open = False
             for index, state in self.tab_editor.tab_states.items():
                 if state['path'] == path:
@@ -413,20 +413,20 @@ class CodeWindow(QMainWindow):
                     break
 
             if is_already_open:
-                # 已打开，更新内容（不触发修改标记）
+                # Already open, update content (do not trigger modified status)
                 self.tab_editor.update_file_content(path, content)
                 self.output_console.append_info(f"[File] Updated: {path}")
             else:
-                # 未打开，在新标签中打开
+                # Not open, open in new tab
                 self.tab_editor.open_file(path, content)
                 self.output_console.append_info(f"[File] Opened: {path}")
         else:
             self.output_console.append_error(f"[File] Open failed: {path}")
 
     def _handle_plot_lib_check_result(self, file_exists: bool):
-        """处理 Plot Lib 文件检查结果"""
+        """Handle Plot Lib file check result"""
         if file_exists:
-            # 文件已存在，询问用户是否更新
+            # File exists, ask user whether to update
             reply = QMessageBox.question(
                 self,
                 "Library Exists",
@@ -439,12 +439,12 @@ class CodeWindow(QMainWindow):
                 self._cleanup_installation_state()
                 return
 
-        # 执行安装
+        # Execute installation
         self.output_console.append_info("[Install] Installing library to device...")
         self.worker.write_file_requested.emit('/lib/signal_plotter.py', self._plot_lib_content)
 
     def on_save_file(self):
-        """保存文件按钮处理"""
+        """Save file button handler"""
         path, content, modified = self.tab_editor.get_current_file_info()
         is_new_file = path is None
 
@@ -474,51 +474,51 @@ class CodeWindow(QMainWindow):
             self.output_console.append_info("[File] No modification made")
             return
 
-        # 触发 Worker 写入文件（等待异步完成信号后才标记为已保存）
+        # Trigger Worker to write file (mark as saved only after async completion signal)
         self.output_console.append_info(f"[File] Saving: {path}")
         self.worker.write_file_requested.emit(path, content)
 
     def on_disconnect_clicked(self):
-        """断开连接按钮处理"""
-        # 禁用断开按钮，防止重复点击
+        """Disconnect button handler"""
+        # Disable disconnect button to prevent double click
         self.toolbar.disconnect_action.setEnabled(False)
 
-        # 输出提示信息
+        # Output info
         self.output_console.append_info("[System] Requesting disconnect...")
 
-        # 触发 Worker 断开连接（异步执行）
+        # Trigger Worker to disconnect (async)
         self.worker.disconnect_requested.emit()
 
     def on_disconnect_finished(self):
-        """断开连接完成处理"""
-        # 更新 UI 状态
+        """Disconnect finished handler"""
+        # Update UI state
         self._update_ui_for_disconnected_state()
 
-        # 更新下拉菜单显示 "Disconnected"
+        # Update dropdown to show "Disconnected"
         self.toolbar.show_disconnected_placeholder()
 
-        # 更新状态栏
+        # Update status bar
         self.status_bar.showMessage("Disconnected")
 
-        # 清空 current_port（表示用户主动断开）
+        # Clear current_port (user initiated disconnect)
         self.current_port = None
 
     def on_install_plot_lib_clicked(self):
-        """Install Plot Lib 按钮处理"""
-        # 1. 获取库文件内容（内嵌在代码中，打包后也可用）
+        """Install Plot Lib button handler"""
+        # 1. Get library content (embedded in code, available after packaging)
         self._plot_lib_content = self._get_signal_plotter_lib_content()
 
-        # 2. 禁用按钮，防止重复点击
+        # 2. Disable button to prevent double click
         self.toolbar.install_plot_lib_action.setEnabled(False)
         self._installing_plot_lib = True
 
-        # 3. 检查设备上是否已存在该文件
+        # 3. Check if file exists on device
         self.output_console.append_info("[Install] Checking device library...")
         self.worker.read_file_requested.emit('/lib/signal_plotter.py')
 
     def _get_signal_plotter_lib_content(self) -> str:
-        """获取 signal_plotter.py 库文件内容"""
-        # 内嵌库文件内容，确保打包后也能使用
+        """Get signal_plotter.py library content"""
+        # Embedded library content, usable after packaging
         return '''import builtins
 import sys
 from machine import UART, Pin
@@ -701,33 +701,33 @@ plotter = _SignalPlotter()
 '''
 
     def _update_ui_for_disconnected_state(self):
-        """断开连接后更新 UI 状态"""
-        # 1. 禁用需要连接的按钮
+        """Update UI state after disconnect"""
+        # 1. Disable buttons requiring connection
         self.toolbar.run_action.setEnabled(False)
         self.toolbar.stop_action.setEnabled(False)
         self.toolbar.disconnect_action.setEnabled(False)
         self.toolbar.install_plot_lib_action.setEnabled(False)
 
-        # 2. 清空文件浏览器
+        # 2. Clear file browser
         self.file_browser.show_error("Device not connected")
 
-        # 3. 关闭绘图窗口（如果打开）
+        # 3. Close plotter window (if open)
         if self.plotter_window:
             self.plotter_window.close()
             self.plotter_window.deleteLater()
             self.plotter_window = None
 
     def _cleanup_installation_state(self):
-        """重置安装状态并恢复按钮"""
+        """Reset installation state and restore buttons"""
         self._installing_plot_lib = False
         self._plot_lib_content = None
-        # 只有在连接状态下才重新启用按钮
+        # Enable button only if connected
         if self.current_port and self.toolbar.disconnect_action.isEnabled():
             self.toolbar.install_plot_lib_action.setEnabled(True)
 
     def on_write_file_finished(self, success: bool, path: str):
-        """文件写入完成处理"""
-        # 检查是否是安装流程
+        """File write finished handler"""
+        # Check if installation process
         if self._installing_plot_lib and path == '/lib/signal_plotter.py':
             if success:
                 self.output_console.append_info("[Install] Library installed successfully!")
@@ -738,7 +738,7 @@ plotter = _SignalPlotter()
                     "You can now use:\nfrom signal_plotter import plotter",
                     QMessageBox.StandardButton.Ok
                 )
-                # 刷新 /lib 目录
+                # Refresh /lib directory
                 self.file_browser.request_directory('/lib')
             else:
                 self.output_console.append_error("[Install] Installation failed")
@@ -752,55 +752,55 @@ plotter = _SignalPlotter()
             return
 
         if success:
-            # 保存成功，标记为已保存
+            # Saved successfully, mark as saved
             self.tab_editor.mark_file_saved(path)
             self.output_console.append_info(f"[File] Save successfully: {path}")
             parent_dir = self._parent_directory(path)
-            # 主动刷新父目录，确保文件浏览器立即反映保存结果
+            # Force refresh parent directory to update browser immediately
             self.file_browser.request_directory(parent_dir)
 
-            # 重新读取文件，确保内容一致
+            # Reload file to ensure consistency
             self.output_console.append_info(f"[File] Reloading after saving...")
             self.worker.read_file_requested.emit(path)
         else:
-            # 保存失败，保持修改状态
+            # Save failed, keep modified status
             self.output_console.append_error(f"[File] Save failed: {path}")
 
     def on_delete_path_finished(self, success: bool, path: str):
-        """文件/目录删除完成"""
+        """File/directory delete finished"""
         if success:
-            # 从待删除字典中获取类型信息
+            # Get type from pending deletes
             is_dir = self._pending_deletes.pop(path, False)
 
-            # 关闭相关的标签页
+            # Close related tabs
             if is_dir:
-                # 如果删除的是目录，关闭该目录下所有文件的标签页
+                # If directory, close all files under it
                 self.tab_editor.close_files_under_directory(path)
             else:
-                # 如果删除的是文件，只关闭该文件的标签页
+                # If file, close only that file tab
                 self.tab_editor.close_file(path)
 
-            # 从文件浏览器中移除
+            # Remove from file browser
             self.file_browser.remove_entry(path)
 
-            # 刷新父目录
+            # Refresh parent directory
             parent_dir = self._parent_directory(path)
             self.file_browser.request_directory(parent_dir)
 
             self.output_console.append_info(f"[File] Deleted: {path}")
         else:
-            # 删除失败，清理待删除记录
+            # Delete failed, clean up pending record
             self._pending_deletes.pop(path, None)
             self.output_console.append_error(f"[File] Delete failed: {path}")
 
     def on_file_modified(self, modified: bool):
-        """文件修改状态改变处理"""
-        # 更新保存按钮状态
+        """File modified status changed"""
+        # Update save button status
         can_save = modified or self.tab_editor.current_is_untitled()
         self.toolbar.save_action.setEnabled(can_save)
 
     def on_file_access_busy(self, operation: str, path: str):
-        """显示设备忙提示框，允许用户停止程序"""
+        """Show device busy dialog, allow user to stop program"""
         base_text = operation or "the requested file operation"
         if operation == "list directory" and path:
             self._busy_directory_paths.add(path)
@@ -839,26 +839,26 @@ plotter = _SignalPlotter()
         return None
 
     def on_active_file_changed(self, path: str):
-        """活动文件改变处理"""
-        # 更新状态栏
+        """Active file changed handler"""
+        # Update status bar
         if path:
             self.status_bar.showMessage(f"Current file: {path}")
         else:
             self.status_bar.showMessage("Ready")
 
-        # 更新保存按钮状态
+        # Update save button status
         _, _, modified = self.tab_editor.get_current_file_info()
         can_save = modified or self.tab_editor.current_is_untitled()
         self.toolbar.save_action.setEnabled(can_save)
 
     def set_buttons_enabled(self, enabled: bool):
-        """设置按钮启用/禁用状态"""
+        """Set buttons enabled state"""
         self.toolbar.run_action.setEnabled(enabled)
         self.toolbar.stop_action.setEnabled(enabled)
 
     @staticmethod
     def _parent_directory(path: str) -> str:
-        """返回文件的父目录（路径为空时返回根目录）"""
+        """Return parent directory (return root if path is empty)"""
         if not path:
             return '/'
         normalized = path.rstrip('/') or '/'
@@ -868,39 +868,39 @@ plotter = _SignalPlotter()
         return parent or '/'
 
     def on_plot_clicked(self):
-        """绘图按钮点击处理"""
+        """Plot button click handler"""
         self.auto_open_plot = True
 
-        # 如果窗口已存在，先关闭并销毁
+        # If window exists, close and destroy
         if self.plotter_window is not None:
             self.plotter_window.close()
             self.plotter_window.deleteLater()
             self.plotter_window = None
 
-        # 创建新窗口（确保数据重置）
+        # Create new window (ensure data reset)
         self.plotter_window = PlotterWindow()
         self.plotter_window.closed.connect(self._on_plotter_closed)
 
-        # 显示窗口
+        # Show window
         self.plotter_window.show()
         self.plotter_window.raise_()
         self.plotter_window.activateWindow()
 
-        # 启用绘图模式
+        # Enable plot mode
         self.worker.set_plot_mode(True)
 
     def _on_plotter_closed(self):
-        """绘图窗口关闭处理"""
-        # 禁用绘图模式
+        """Plotter window closed handler"""
+        # Disable plot mode
         self.worker.set_plot_mode(False)
         self.auto_open_plot = False
 
     def _forward_plot_data(self, values: list):
         """
-        转发绘图数据到绘图窗口
+        Forward plot data to plotter window
 
         Args:
-            values: 绘图数据值列表
+            values: List of plot data values
         """
         if not values:
             return
@@ -912,7 +912,7 @@ plotter = _SignalPlotter()
             self.plotter_window.on_plot_data_received(values)
 
     def _forward_plot_config(self, names: list):
-        """接收到通道配置后更新绘图窗口的图例名称"""
+        """Update legend names in plotter window after receiving channel config"""
         if not names:
             return
 
@@ -923,21 +923,21 @@ plotter = _SignalPlotter()
             self.plotter_window.on_plot_config_received(names)
 
     def closeEvent(self, event):
-        """窗口关闭事件"""
+        """Window close event"""
         if hasattr(self, "port_monitor") and self.port_monitor.isActive():
             self.port_monitor.stop()
 
-        # 1. 关闭绘图窗口
+        # 1. Close plotter window
         if self.plotter_window:
             self.plotter_window.close()
 
-        # 2. 断开设备（在 Worker 线程中执行）
+        # 2. Disconnect device (in Worker thread)
         self.output_console.append_info("[System] Disconnecting device...")
         self.worker.disconnect_requested.emit()
 
-        # 3. 停止并等待线程结束
+        # 3. Stop and wait for thread to finish
         self.worker_thread.quit()
-        self.worker_thread.wait(3000)  # 最多等待 3 秒
+        self.worker_thread.wait(3000)  # Wait up to 3 seconds
 
-        # 4. 接受关闭事件
+        # 4. Accept close event
         event.accept()

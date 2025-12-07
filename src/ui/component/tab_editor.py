@@ -4,17 +4,17 @@ from .code_editor import CodeEditor
 
 
 class TabEditorWidget(QWidget):
-    """多标签代码编辑器"""
+    """Multi-tab code editor"""
 
     # Signals
-    file_modified = Signal(bool)  # 当前活动标签的修改状态改变
-    active_file_changed = Signal(str)  # 活动文件改变 (path or "")
-    save_requested = Signal()  # 保存请求 (来自快捷键)
+    file_modified = Signal(bool)  # Active tab modified status changed
+    active_file_changed = Signal(str)  # Active file changed (path or "")
+    save_requested = Signal()  # Save requested (from shortcut)
 
     def __init__(self, parent=None):
         super().__init__(parent)
 
-        # 布局
+        # Layout
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
@@ -25,15 +25,15 @@ class TabEditorWidget(QWidget):
         self.tab_widget.currentChanged.connect(self._on_current_tab_changed)
         layout.addWidget(self.tab_widget)
 
-        # 标签状态字典: {tab_index: {'path': str | None, 'modified': bool, 'editor': CodeEditor, 'display_name': str}}
+        # Tab state dictionary: {tab_index: {'path': str | None, 'modified': bool, 'editor': CodeEditor, 'display_name': str}}
         self.tab_states = {}
         self._untitled_counter = 1
 
-        # 创建默认的未命名标签
+        # Create default untitled tab
         self.create_new_tab()
 
     def create_new_tab(self):
-        """创建新的未命名标签并切换过去"""
+        """Create new untitled tab and switch to it"""
         editor = CodeEditor()
         editor.textChanged.connect(lambda: self._on_text_changed(editor))
         editor.save_requested.connect(self.save_requested.emit)
@@ -62,26 +62,26 @@ class TabEditorWidget(QWidget):
 
     def open_file(self, path: str, content: str):
         """
-        打开文件到新标签或切换到已存在的标签
+        Open file in new tab or switch to existing tab
 
         Args:
-            path: 文件路径
-            content: 文件内容
+            path: File path
+            content: File content
         """
-        # 检查文件是否已打开
+        # Check if file is already open
         for index, state in self.tab_states.items():
             if state['path'] == path:
-                # 已打开，切换到该标签
+                # Already open, switch to this tab
                 self.tab_widget.setCurrentIndex(index)
                 return
 
-        # 文件未打开，创建新标签
+        # File not open, create new tab
         editor = CodeEditor()
         editor.set_code(content)
         editor.textChanged.connect(lambda: self._on_text_changed(editor))
         editor.save_requested.connect(self.save_requested.emit)
 
-        # 提取文件名
+        # Extract filename
         filename = path.split('/')[-1]
         index = self.tab_widget.addTab(editor, filename)
         self.tab_widget.setTabToolTip(index, path)
@@ -93,12 +93,12 @@ class TabEditorWidget(QWidget):
             'display_name': None
         }
 
-        # 切换到新标签
+        # Switch to new tab
         self.tab_widget.setCurrentIndex(index)
 
     def get_current_file_info(self):
         """
-        获取当前活动标签的文件信息
+        Get file info of current active tab
 
         Returns:
             (path, content, modified) or (None, None, False) if no tab
@@ -115,7 +115,7 @@ class TabEditorWidget(QWidget):
         return (path, content, modified)
 
     def mark_current_saved(self):
-        """标记当前文件为已保存状态"""
+        """Mark current file as saved"""
         current_index = self.tab_widget.currentIndex()
         if current_index == -1 or current_index not in self.tab_states:
             return
@@ -128,42 +128,42 @@ class TabEditorWidget(QWidget):
 
     def mark_file_saved(self, path: str):
         """
-        标记指定路径的文件为已保存状态
+        Mark file at specified path as saved
 
         Args:
-            path: 文件路径
+            path: File path
         """
         for index, state in self.tab_states.items():
             if state['path'] == path:
                 if state['modified']:
                     state['modified'] = False
                     self._update_tab_title(index)
-                    # 如果是当前活动标签，发出信号
+                    # If it is the current active tab, emit signal
                     if index == self.tab_widget.currentIndex():
                         self.file_modified.emit(False)
                 break
 
     def update_file_content(self, path: str, content: str):
         """
-        更新指定路径文件的内容（不触发修改状态），并切换到该标签
+        Update content of file at specified path (without triggering modified status) and switch to that tab
 
         Args:
-            path: 文件路径
-            content: 新内容
+            path: File path
+            content: New content
         """
         for index, state in self.tab_states.items():
             if state['path'] == path:
                 editor = state['editor']
-                # 临时断开信号，避免触发修改标记
+                # Temporarily disconnect signal to avoid triggering modified flag
                 editor.textChanged.disconnect()
                 editor.set_code(content)
                 editor.textChanged.connect(lambda: self._on_text_changed(editor))
-                # 切换到该标签页
+                # Switch to that tab
                 self.tab_widget.setCurrentIndex(index)
                 break
 
     def get_current_code(self) -> str:
-        """获取当前标签的代码"""
+        """Get code of current tab"""
         current_index = self.tab_widget.currentIndex()
         if current_index == -1 or current_index not in self.tab_states:
             return ""
@@ -171,11 +171,11 @@ class TabEditorWidget(QWidget):
         return self.tab_states[current_index]['editor'].get_code()
 
     def _on_text_changed(self, editor: CodeEditor):
-        """文本改变事件"""
-        # 查找该编辑器对应的标签
+        """Text changed event"""
+        # Find tab corresponding to this editor
         for index, state in self.tab_states.items():
             if state['editor'] == editor:
-                # 只有已保存的文件才需要标记修改
+                # Only mark as modified if file was saved
                 if not state['modified']:
                     state['modified'] = True
                     self._update_tab_title(index)
@@ -185,7 +185,7 @@ class TabEditorWidget(QWidget):
                 break
 
     def _update_tab_title(self, index: int):
-        """更新标签标题（添加/移除星号）"""
+        """Update tab title (add/remove asterisk)"""
         if index not in self.tab_states:
             return
 
@@ -196,18 +196,18 @@ class TabEditorWidget(QWidget):
         if path is None:
             title = state.get('display_name') or "Untitled"
         else:
-            # 已命名文件
+            # Named file
             filename = path.split('/')[-1]
             title = filename
 
-        # 添加星号标记
+        # Add asterisk marker
         if modified:
             title = f"{title} *"
 
         self.tab_widget.setTabText(index, title)
 
     def _on_current_tab_changed(self, index: int):
-        """当前标签改变事件"""
+        """Current tab changed event"""
         if index == -1 or index not in self.tab_states:
             self.active_file_changed.emit("")
             self.file_modified.emit(False)
@@ -221,17 +221,17 @@ class TabEditorWidget(QWidget):
         self.file_modified.emit(modified)
 
     def _on_tab_close_requested(self, index: int):
-        """标签关闭请求"""
+        """Tab close requested"""
         if index not in self.tab_states:
             return
-        # TODO: 如果文件已修改，询问是否保存（暂时不实现）
+        # TODO: If file is modified, ask to save (not implemented yet)
         self._remove_tab_at_index(index)
 
     def _reindex_tabs(self):
-        """重新索引标签状态（删除标签后调用）"""
+        """Reindex tab states (called after deleting tab)"""
         new_states = {}
         for i in range(self.tab_widget.count()):
-            # 查找原来的状态
+            # Find original state
             for old_index, state in self.tab_states.items():
                 if self.tab_widget.widget(i) == state['editor']:
                     new_states[i] = state
@@ -239,7 +239,7 @@ class TabEditorWidget(QWidget):
         self.tab_states = new_states
 
     def set_current_file_path(self, path: str):
-        """为当前标签设置文件路径"""
+        """Set file path for current tab"""
         current_index = self.tab_widget.currentIndex()
         if current_index == -1 or current_index not in self.tab_states:
             return
@@ -253,7 +253,7 @@ class TabEditorWidget(QWidget):
         self.active_file_changed.emit(path)
 
     def current_is_untitled(self) -> bool:
-        """返回当前标签是否尚未命名"""
+        """Return whether current tab is untitled"""
         current_index = self.tab_widget.currentIndex()
         if current_index == -1 or current_index not in self.tab_states:
             return False
@@ -262,25 +262,25 @@ class TabEditorWidget(QWidget):
         return state['path'] is None
 
     def close_file(self, path: str):
-        """关闭指定路径的标签（如果存在）"""
+        """Close tab with specified path (if exists)"""
         for index, state in list(self.tab_states.items()):
             if state['path'] == path:
                 self._remove_tab_at_index(index)
                 break
 
     def close_files_under_directory(self, dir_path: str):
-        """关闭指定目录下的所有文件标签"""
-        # 规范化目录路径（确保以 / 结尾，方便匹配）
+        """Close all file tabs under specified directory"""
+        # Normalize directory path (ensure ending with / for easier matching)
         normalized_dir = dir_path.rstrip('/') + '/'
 
-        # 找出所有在该目录下的文件
+        # Find all files under this directory
         indices_to_close = []
         for index, state in self.tab_states.items():
             file_path = state['path']
             if file_path and file_path.startswith(normalized_dir):
                 indices_to_close.append(index)
 
-        # 按倒序关闭（避免索引混乱）
+        # Close in reverse order (avoid index confusion)
         for index in sorted(indices_to_close, reverse=True):
             self._remove_tab_at_index(index)
 

@@ -1,10 +1,42 @@
 # MicroPython Plotter
 
-This library helps you visualize data from your MicroPython device instantly. Follow these steps to get started.
+This tool helps you visualize data from your MicroPython device effectively and in real-time.
 
-Now it is only a proof of concept, there's a lot of room of improvements.  
+![Previvew](docs/demo.gif)
+
+## Why this tool?
+
+### The Traditional Workflow
+Usually, when working with sensors (like Heart Rate or PPG) on MicroPython, the workflow is slow and tedious:
+1.  Log sensor data to a file on the device.
+2.  Wait for the experiment to finish.
+3.  Copy the file to your computer.
+4.  Analyze and plot the data.
+
+**Result:** You can't see what's happening *now*. Tuning filters or debugging signal issues becomes a slow cycle of "record -> check -> retry".
+
+### The Solution: Real-time Preview
+**MicroPython Plotter** changes this by providing a **Real-time Preview** of your data.
+*   **Instant Visualization:** See your sensor data immediately as it happens.
+*   **High Performance:** Capable of plotting 5 channels at ~700Hz.
+*   **Quick Iteration:** Includes a basic code editor to let you tweak parameters, run the code, and see the results instantly.
+
+> **Note:** The built-in code editor is designed for quick adjustments (the "Plot -> Tweak -> Run" loop), not to replace your full-featured IDE. It is currently a proof of concept with room for improvement.
 
 It won't break your MicroPython device, **but always backup the important data in you MicroPython device when using this tool.**
+
+## Key Features
+
+### Interactive Plotting
+*   **Zoom & Pan:** Inspect signal details closely by zooming in and out.
+*   **Customization:** Change line colors to easily distinguish between different data channels.
+*   **Pause/Resume:** Freeze the display to analyze a specific moment without losing the data flow.
+*   **Automatic Legends:** Variable names transmitted from your code (e.g., `plotter.plot('temperature', t)`) automatically appear in the plot legend, making it easy to identify signals.
+
+### Future Roadmap
+*   **History View:** Review past data sessions.
+*   **Data Saving:** Improved export options for further analysis.
+*   **Better Editor:** Add more features to the built-in code editor.
 
 ## Installation
 

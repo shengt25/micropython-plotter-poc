@@ -18,7 +18,7 @@ from .file_browser import FileBrowser
 
 
 class DeviceSaveDialog(QDialog):
-    """更接近文件管理器体验的保存对话框"""
+    """Save dialog with file manager-like experience"""
 
     ROLE_PATH = Qt.ItemDataRole.UserRole
     ROLE_IS_DIR = Qt.ItemDataRole.UserRole + 1
