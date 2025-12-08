@@ -37,6 +37,8 @@ It won't break your MicroPython device, **but always backup the important data i
 *   **History View:** Review past data sessions.
 *   **Data Saving:** Improved export options for further analysis.
 *   **Better Editor:** Add more features to the built-in code editor.
+*   **Multiple Call:** Able to be called at different places and shown in different graph.
+*   **Timestamp Function:** Add an option to transmit data with timestamp, which can be shown on the x-axis
 
 ## Installation
 
