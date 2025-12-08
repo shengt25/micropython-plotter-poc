@@ -30,7 +30,7 @@ It won't break your MicroPython device, **but always backup the important data i
 ### Interactive Plotting
 *   **Zoom & Pan:** Inspect signal details closely by zooming in and out.
 *   **Customization:** Change line colors to easily distinguish between different data channels.
-*   **Pause/Resume:** Freeze the display to analyze a specific moment without losing the data flow.
+*   **Pause/Resume:** Freeze the display to analyze a specific moment.
 *   **Automatic Legends:** Variable names transmitted from your code (e.g., `plotter.plot('temperature', t)`) automatically appear in the plot legend, making it easy to identify signals.
 
 ### Future Roadmap
